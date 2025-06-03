@@ -65,24 +65,83 @@ class FaceEmbeddingService {
     }
 
     try {
-      // Detectar rostros con landmarks y descriptores
-      const detections = await faceapi
-        .detectAllFaces(element, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptors();
+      console.log('[FaceEmbeddingService] Iniciando detección facial para embedding...');
+      
+      // Configuraciones de detección en orden de preferencia (de más estricta a más permisiva)
+      const detectionConfigs = [
+        // Configuración estándar
+        new faceapi.TinyFaceDetectorOptions({ 
+          inputSize: 416, 
+          scoreThreshold: 0.5 
+        }),
+        // Configuración más permisiva
+        new faceapi.TinyFaceDetectorOptions({ 
+          inputSize: 320, 
+          scoreThreshold: 0.4 
+        }),
+        // Configuración muy permisiva
+        new faceapi.TinyFaceDetectorOptions({ 
+          inputSize: 224, 
+          scoreThreshold: 0.3 
+        })
+      ];
 
-      if (detections.length === 0) {
-        console.warn('No se detectaron rostros para generar embedding');
-        return null;
+      for (let i = 0; i < detectionConfigs.length; i++) {
+        const config = detectionConfigs[i];
+        console.log(`[FaceEmbeddingService] Probando configuración ${i + 1}/${detectionConfigs.length}...`);
+        
+        try {
+          // Detectar rostros con landmarks y descriptores
+          const detections = await faceapi
+            .detectAllFaces(element, config)
+            .withFaceLandmarks()
+            .withFaceDescriptors();
+
+          console.log(`[FaceEmbeddingService] Configuración ${i + 1}: ${detections.length} rostro(s) detectado(s)`);
+
+          if (detections.length > 0) {
+            // Tomar el rostro con mayor puntuación de confianza
+            const bestDetection = detections.reduce((best, current) => 
+              current.detection.score > best.detection.score ? current : best
+            );
+            
+            console.log(`[FaceEmbeddingService] ✅ Rostro seleccionado con confianza: ${bestDetection.detection.score.toFixed(3)}`);
+            
+            // Convertir Float32Array a Array de números
+            const embedding = Array.from(bestDetection.descriptor);
+            console.log(`[FaceEmbeddingService] ✅ Embedding generado: ${embedding.length} dimensiones`);
+            
+            return embedding;
+          }
+        } catch (configError) {
+          console.warn(`[FaceEmbeddingService] Error con configuración ${i + 1}:`, configError);
+          continue;
+        }
       }
 
-      // Tomar el primer rostro detectado (el más prominente)
-      const faceDescriptor = detections[0].descriptor;
+      // Si llegamos aquí, ninguna configuración funcionó
+      console.error('[FaceEmbeddingService] ❌ No se detectaron rostros con ninguna configuración');
       
-      // Convertir Float32Array a Array de números
-      return Array.from(faceDescriptor);
+      // Como último recurso, intentar detección simple sin landmarks
+      try {
+        console.log('[FaceEmbeddingService] Intentando detección simple como último recurso...');
+        const simpleDetections = await faceapi.detectAllFaces(
+          element, 
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.2 })
+        );
+        
+        console.log(`[FaceEmbeddingService] Detección simple: ${simpleDetections.length} rostro(s)`);
+        
+        if (simpleDetections.length > 0) {
+          console.warn('[FaceEmbeddingService] ⚠️ Rostro detectado pero sin descriptores válidos');
+        }
+      } catch (lastResortError) {
+        console.error('[FaceEmbeddingService] Error en detección de último recurso:', lastResortError);
+      }
+      
+      return null;
     } catch (error) {
-      console.error('Error generando embedding facial:', error);
+      console.error('[FaceEmbeddingService] Error crítico generando embedding facial:', error);
       return null;
     }
   }
@@ -117,7 +176,15 @@ class FaceEmbeddingService {
    */
   public captureVideoFrame(videoElement: HTMLVideoElement): HTMLCanvasElement {
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    
+    // Configurar contexto 2D con optimización para múltiples operaciones getImageData
+    let ctx: CanvasRenderingContext2D | null;
+    try {
+      ctx = canvas.getContext('2d', { willReadFrequently: true });
+    } catch (e) {
+      // Fallback para navegadores que no soportan willReadFrequently
+      ctx = canvas.getContext('2d');
+    }
     
     if (!ctx) {
       throw new Error('No se pudo obtener el contexto 2D del canvas');

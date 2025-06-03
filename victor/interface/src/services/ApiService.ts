@@ -222,33 +222,33 @@ class ApiService {
   /**
    * Registra un rostro en el sistema (requiere autenticación)
    */
-  static async enrollFace(token: string, faceEmbeddings: number[][]): Promise<EnrollmentResponse> {
+  static async enrollFace(token: string, embeddings: Array<{data: number[], type: string, quality: number}>): Promise<EnrollmentResponse> {
     try {
-      console.log(`[ApiService] Iniciando enrollment con ${faceEmbeddings.length} embeddings`);
+      console.log(`[ApiService] Iniciando enrollment con ${embeddings.length} embeddings`);
       
       // Validar datos de entrada
-      if (!token || !faceEmbeddings || faceEmbeddings.length !== 3) {
-        throw new Error('Token y 3 embeddings faciales son requeridos');
+      if (!token || !embeddings || embeddings.length !== 4) {
+        throw new Error('Token y 4 embeddings faciales son requeridos');
       }
 
       // Verificar que los embeddings tengan el formato correcto
-      const validEmbeddings = faceEmbeddings.every(embedding => 
-        Array.isArray(embedding) && embedding.length === 128
+      const validEmbeddings = embeddings.every(embedding => 
+        embedding.data && Array.isArray(embedding.data) && embedding.data.length === 128 &&
+        embedding.type && typeof embedding.type === 'string' &&
+        embedding.quality && typeof embedding.quality === 'number'
       );
 
       if (!validEmbeddings) {
-        throw new Error('Los embeddings deben ser arrays de 128 elementos');
+        throw new Error('Los embeddings deben tener formato {data: number[128], type: string, quality: number}');
       }
 
       const requestData = {
-        faceEmbeddings,
-        captureDetails: {
-          types: ['normal', 'sonrisa', 'ojos_cerrados'],
-          timestamp: new Date().toISOString()
-        }
+        embeddings  // Enviar directamente los embeddings estructurados
       };
 
       console.log('[ApiService] Enviando datos de enrollment al servidor...');
+      console.log(`[ApiService] Embeddings estructurados: ${embeddings.map(e => `${e.type}(${e.data.length})`).join(', ')}`);
+      
       const response = await api.post('/face/enroll', requestData, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -313,7 +313,7 @@ class ApiService {
       }
 
       const requestData = {
-        faceEmbedding,
+        embedding: faceEmbedding,        // Cambiar 'faceEmbedding' a 'embedding' para que coincida con el backend
         timestamp: new Date().toISOString(),
         metadata: {
           source: 'web_app',

@@ -4,7 +4,7 @@ import MediaPipeService from '../services/MediaPipeService';
 import FaceEmbeddingService from '../services/FaceEmbeddingService';
 import ApiService from '../services/ApiService';
 import { FaceLandmarkerResult } from '@mediapipe/tasks-vision';
-import { FaCamera, FaCheck, FaExclamationTriangle, FaUser, FaEye, FaSyncAlt, FaSmile, FaEyeSlash } from 'react-icons/fa';
+import { FaCamera, FaCheck, FaExclamationTriangle, FaUser, FaEye, FaSyncAlt, FaSmile, FaEyeSlash, FaArrowDown, FaArrowUp } from 'react-icons/fa';
 
 // Estados posibles durante el proceso de enrollment
 type EnrollmentStatus = 
@@ -13,14 +13,15 @@ type EnrollmentStatus =
   | 'detectando_rostro'
   | 'esperando_captura_normal'
   | 'esperando_sonrisa_automatica' 
-  | 'esperando_ojos_cerrados_automaticos'
+  | 'esperando_asentir_automatico'
+  | 'esperando_subir_cabeza_automatico'
   | 'procesando_imagenes'
   | 'enviando_datos'
   | 'registro_exitoso'
   | 'error_registro';
 
 // Tipos de captura específicos
-type CaptureType = 'normal' | 'sonrisa' | 'ojos_cerrados';
+type CaptureType = 'normal' | 'sonrisa' | 'asentir' | 'subir_cabeza';
 
 interface CapturedImage {
   type: CaptureType;
@@ -64,16 +65,34 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
   const challengeCounter = useRef<number>(0);
   const blinkHistory = useRef<boolean[]>([]);
   
+  // Historial para detección de asentimiento (como en FacialLogin)
+  const nosePositionHistory = useRef<number[]>([]);
+  
+  // Control para captura post-asentimiento
+  const postNodCaptureCounter = useRef<number>(0);
+  const shouldCaptureAfterNod = useRef<boolean>(false);
+  
   // Control de bucle de detección
   const isRunning = useRef<boolean>(false);
   const frameCount = useRef<number>(0);
   const lastFrameTime = useRef<number>(0);
   const currentStatusRef = useRef<EnrollmentStatus>('inicializando');
+  
+  // Flag para evitar múltiples capturas simultáneas
+  const captureInProgress = useRef<Set<CaptureType>>(new Set());
+  
+  // REF PARA CONTROL INMEDIATO DE IMÁGENES (para evitar problemas de estado desactualizado)
+  const capturedImagesRef = useRef<CapturedImage[]>([]);
 
   // Actualizar la ref cuando cambie el estado
   useEffect(() => {
     currentStatusRef.current = status;
   }, [status]);
+  
+  // Sincronizar ref de imágenes con el estado
+  useEffect(() => {
+    capturedImagesRef.current = capturedImages;
+  }, [capturedImages]);
 
   // Inicializar servicios y solicitar acceso a la cámara
   useEffect(() => {
@@ -86,7 +105,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         const mediaPipeService = MediaPipeService.getInstance();
         if (!mediaPipeService.isInitialized()) {
           console.log('[FacialEnrollment] Inicializando MediaPipe...');
-          await mediaPipeService.initialize();
+        await mediaPipeService.initialize();
         }
         
         // Inicializar FaceEmbeddingService  
@@ -166,9 +185,9 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
               })
               .catch(error => {
                 console.error('[FacialEnrollment] Error reproduciendo video:', error);
-                setStatus('error_registro');
+              setStatus('error_registro');
                 setErrorMessage('No se pudo iniciar la reproducción del video. Verifique los permisos de su navegador.');
-              });
+            });
           }
         };
 
@@ -201,14 +220,14 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
   // Detener la cámara
   const stopCamera = () => {
     try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
         console.log('[FacialEnrollment] Cámara detenida');
-      }
+    }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
       }
     } catch (error) {
       console.error('[FacialEnrollment] Error deteniendo cámara:', error);
@@ -255,11 +274,11 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
 
       try {
         const result = mediaPipeService.detectFaceInVideo(videoRef.current, timestamp);
-        const isFaceDetected = mediaPipeService.hasFaceDetected(result);
-        setFaceDetected(isFaceDetected);
+      const isFaceDetected = mediaPipeService.hasFaceDetected(result);
+      setFaceDetected(isFaceDetected);
 
         if (isFaceDetected && result) {
-          evaluateFaceQuality(result);
+        evaluateFaceQuality(result);
           const currentQuality = evaluateFaceQualitySync(result);
           processCurrentState(currentQuality);
           processAutomaticChallenges(result);
@@ -273,7 +292,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
       }
 
       if (isRunning.current) {
-        animationRef.current = requestAnimationFrame(detectFace);
+      animationRef.current = requestAnimationFrame(detectFace);
       }
     };
 
@@ -323,9 +342,28 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
   const processAutomaticChallenges = (result: FaceLandmarkerResult) => {
     const mediaPipeService = MediaPipeService.getInstance();
     
+    // 🚨 VERIFICACIÓN CRÍTICA: SI YA TENEMOS 4 CAPTURAS, NO PROCESAR MÁS
+    if (capturedImagesRef.current.length >= 4) {
+      console.log(`[FacialEnrollment] 🛑 YA TENEMOS ${capturedImagesRef.current.length}/4 CAPTURAS - DETENIENDO PROCESAMIENTO`);
+      // DETENER TODO INMEDIATAMENTE
+      isRunning.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      setStatus('procesando_imagenes');
+      return;
+    }
+    
     try {
       switch (currentStatusRef.current) {
         case 'esperando_sonrisa_automatica':
+          // Verificar si ya tenemos una imagen de sonrisa
+          const existingSonrisaImage = capturedImages.find(img => img.type === 'sonrisa');
+          if (existingSonrisaImage || isCapturing) {
+            return; // Ya capturada o en proceso de captura
+          }
+          
           if (mediaPipeService.isSmiling(result)) {
             challengeCounter.current++;
             setChallengeProgress(Math.min((challengeCounter.current / 15) * 100, 100));
@@ -334,7 +372,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
               console.log('[FacialEnrollment] Sonrisa detectada, capturando imagen...');
               automaticCapture('sonrisa');
             }
-          } else {
+      } else {
             if (challengeCounter.current > 0) {
               challengeCounter.current = Math.max(0, challengeCounter.current - 1);
               setChallengeProgress(Math.min((challengeCounter.current / 15) * 100, 100));
@@ -342,30 +380,108 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
           }
           break;
 
-        case 'esperando_ojos_cerrados_automaticos':
-          const isBlinking = mediaPipeService.isBlinking(result);
-          blinkHistory.current.push(isBlinking);
-          
-          if (blinkHistory.current.length > 30) {
-            blinkHistory.current.shift();
+        case 'esperando_asentir_automatico':
+          // Verificar si ya tenemos una imagen de asentir
+          const existingAsentirImage = capturedImages.find(img => img.type === 'asentir');
+          if (existingAsentirImage || isCapturing) {
+            return; // Ya capturada o en proceso de captura
           }
           
-          // Detectar si los ojos han estado cerrados por suficiente tiempo
-          const recentFrames = blinkHistory.current.slice(-10);
-          const closedFrames = recentFrames.filter(closed => closed).length;
-          
-          if (closedFrames >= 8) { // 8 de 10 frames con ojos cerrados
-            challengeCounter.current++;
-            setChallengeProgress(Math.min((challengeCounter.current / 10) * 100, 100));
-            
-            if (challengeCounter.current >= 10) {
-              console.log('[FacialEnrollment] Ojos cerrados detectados, capturando imagen...');
-              automaticCapture('ojos_cerrados');
+          // Lógica de detección de asentimiento mejorada
+          if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+            const landmarks = result.faceLandmarks[0];
+            if (landmarks && landmarks.length > 1) {
+              const noseY = landmarks[1]?.y;
+              if (typeof noseY === 'number') {
+                nosePositionHistory.current.push(noseY);
+                
+                if (nosePositionHistory.current.length > 15) {
+                  nosePositionHistory.current.shift();
+                }
+                
+                // Si aún no hemos completado el asentimiento
+                if (!shouldCaptureAfterNod.current) {
+                  if (mediaPipeService.isNodding(result, nosePositionHistory.current)) {
+                    challengeCounter.current++;
+                    setChallengeProgress(Math.min((challengeCounter.current / 8) * 100, 100));
+                    
+                    if (challengeCounter.current >= 8) {
+                      console.log('[FacialEnrollment] ✅ Asentimiento completado, esperando estabilización...');
+                      shouldCaptureAfterNod.current = true;
+                      postNodCaptureCounter.current = 0;
+                      setChallengeProgress(100);
+        }
+      }
+    } else {
+                  // Ya completamos el asentimiento, esperamos estabilización
+                  postNodCaptureCounter.current++;
+                  
+                  // Esperar 10 frames (~0.7s) para que se estabilice
+                  if (postNodCaptureCounter.current >= 10) {
+                    console.log('[FacialEnrollment] 🎯 Cabeza estabilizada, capturando imagen...');
+                    shouldCaptureAfterNod.current = false; // Reset
+                    postNodCaptureCounter.current = 0;
+                    automaticCapture('asentir');
+                  }
+                }
+              }
             }
-          } else {
-            if (challengeCounter.current > 0) {
-              challengeCounter.current = Math.max(0, challengeCounter.current - 1);
-              setChallengeProgress(Math.min((challengeCounter.current / 10) * 100, 100));
+          }
+          break;
+
+        case 'esperando_subir_cabeza_automatico':
+          // Verificar si ya tenemos una imagen de subir cabeza
+          const existingSubirCabezaImage = capturedImages.find(img => img.type === 'subir_cabeza');
+          if (existingSubirCabezaImage || isCapturing) {
+            return; // Ya capturada o en proceso de captura
+          }
+          
+          // Lógica de detección de subir cabeza (similar a asentimiento pero detectando movimiento hacia arriba)
+          if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+            const landmarks = result.faceLandmarks[0];
+            if (landmarks && landmarks.length > 1) {
+              const noseY = landmarks[1]?.y;
+              if (typeof noseY === 'number') {
+                nosePositionHistory.current.push(noseY);
+                
+                if (nosePositionHistory.current.length > 15) {
+                  nosePositionHistory.current.shift();
+                }
+                
+                // Si aún no hemos completado el movimiento hacia arriba
+                if (!shouldCaptureAfterNod.current) {
+                  // Detectar si la cabeza se ha movido significativamente hacia arriba
+                  if (nosePositionHistory.current.length >= 10) {
+                    const recentPositions = nosePositionHistory.current.slice(-10);
+                    const firstPosition = recentPositions[0];
+                    const lastPosition = recentPositions[recentPositions.length - 1];
+                    
+                    // Si la cabeza se movió hacia arriba (nose Y decreased) por al menos 0.05
+                    if (firstPosition - lastPosition > 0.05) {
+                      challengeCounter.current++;
+                      setChallengeProgress(Math.min((challengeCounter.current / 8) * 100, 100));
+                      
+                      if (challengeCounter.current >= 8) {
+                        console.log('[FacialEnrollment] ✅ Movimiento de cabeza hacia arriba completado, esperando estabilización...');
+                        shouldCaptureAfterNod.current = true;
+                        postNodCaptureCounter.current = 0;
+                        setChallengeProgress(100);
+                      }
+                    }
+                  }
+                } else {
+                  // Ya completamos el movimiento, esperamos estabilización
+                  postNodCaptureCounter.current++;
+                  
+                  // Esperar 10 frames (~0.7s) para que se estabilice
+                  if (postNodCaptureCounter.current >= 10) {
+                    console.log('[FacialEnrollment] 🎯 Cabeza estabilizada después del movimiento, capturando imagen...');
+                    shouldCaptureAfterNod.current = false; // Reset
+                    postNodCaptureCounter.current = 0;
+                    automaticCapture('subir_cabeza');
+                  }
+                }
+              }
             }
           }
           break;
@@ -412,7 +528,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
       setFaceQuality('low');
       return;
     }
-
+    
     try {
       const landmarks = result.faceLandmarks[0];
       
@@ -436,7 +552,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         newQuality = 'high';
       } else if (faceWidth > 0.1 && faceHeight > 0.1) {
         newQuality = 'medium';
-      } else {
+} else {
         newQuality = 'low';
       }
       
@@ -455,8 +571,8 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
   // Capturar imagen específica (manual para normal)
   const captureImage = async (type: CaptureType) => {
     if (isCapturing || !videoRef.current || faceQuality !== 'high') {
-      return;
-    }
+  return;
+}
 
     setIsCapturing(true);
     console.log(`[FacialEnrollment] Capturando imagen tipo: ${type}`);
@@ -492,13 +608,23 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         challengeCounter.current = 0;
         setChallengeProgress(0);
       } else if (type === 'sonrisa') {
-        setStatus('esperando_ojos_cerrados_automaticos');
-        setCurrentCaptureType('ojos_cerrados');
+        setStatus('esperando_asentir_automatico');
+        setCurrentCaptureType('asentir');
         challengeCounter.current = 0;
         setChallengeProgress(0);
-        blinkHistory.current = [];
-      } else if (type === 'ojos_cerrados') {
-        // Todas las capturas completadas
+        nosePositionHistory.current = []; // Limpiar historial de nariz
+        shouldCaptureAfterNod.current = false; // Reset control post-asentimiento
+        postNodCaptureCounter.current = 0;
+      } else if (type === 'asentir') {
+        setStatus('esperando_subir_cabeza_automatico');
+        setCurrentCaptureType('subir_cabeza');
+        challengeCounter.current = 0;
+        setChallengeProgress(0);
+        nosePositionHistory.current = []; // Limpiar historial de nariz
+        shouldCaptureAfterNod.current = false; // Reset control post-movimiento
+        postNodCaptureCounter.current = 0;
+      } else if (type === 'subir_cabeza') {
+        // Todas las 4 capturas completadas
         await sendEnrollmentData([...capturedImages, capturedImage]);
       }
       
@@ -513,18 +639,78 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
 
   // Captura automática para desafíos
   const automaticCapture = async (type: CaptureType) => {
-    if (isCapturing || !videoRef.current) {
+    // 🚨 VERIFICACIÓN CRÍTICA: MÁXIMO 4 CAPTURAS
+    if (capturedImagesRef.current.length >= 4) {
+      console.log(`[FacialEnrollment] 🛑 MÁXIMO DE CAPTURAS ALCANZADO: ${capturedImagesRef.current.length}/4 - DETENIENDO SISTEMA`);
+      // DETENER TODO INMEDIATAMENTE
+      isRunning.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      setStatus('procesando_imagenes');
       return;
     }
 
+    // 🚨 VERIFICACIÓN ADICIONAL CON ESTADO
+    if (capturedImages.length >= 4) {
+      console.log(`[FacialEnrollment] 🛑 MÁXIMO DE CAPTURAS ALCANZADO (STATE): ${capturedImages.length}/4 - DETENIENDO SISTEMA`);
+      // DETENER TODO INMEDIATAMENTE
+      isRunning.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      setStatus('procesando_imagenes');
+      return;
+    }
+
+    // VERIFICACIÓN MÚLTIPLE PARA EVITAR CAPTURAS DUPLICADAS
+    if (isCapturing || !videoRef.current || captureInProgress.current.has(type)) {
+      console.log(`[FacialEnrollment] ⚠️ Captura bloqueada - isCapturing: ${isCapturing}, captureInProgress: ${captureInProgress.current.has(type)}`);
+      return;
+    }
+
+    // Verificar si ya tenemos una imagen de este tipo
+    const existingImageOfType = capturedImages.find(img => img.type === type);
+    if (existingImageOfType) {
+      console.log(`[FacialEnrollment] Ya existe imagen de tipo ${type}, ignorando captura múltiple`);
+      return;
+    }
+
+    // VERIFICACIÓN ADICIONAL CON REF (estado más actual)
+    const existingImageOfTypeRef = capturedImagesRef.current.find(img => img.type === type);
+    if (existingImageOfTypeRef) {
+      console.log(`[FacialEnrollment] 🚫 Ya existe imagen de tipo ${type}, ignorando captura múltiple (REF)`);
+      return;
+    }
+
+    // VERIFICACIÓN ADICIONAL CON ESTADO (doble seguridad)
+    const existingImageOfTypeState = capturedImages.find(img => img.type === type);
+    if (existingImageOfTypeState) {
+      console.log(`[FacialEnrollment] 🚫 Ya existe imagen de tipo ${type}, ignorando captura múltiple (STATE)`);
+      return;
+    }
+
+    // DETENER INMEDIATAMENTE EL BUCLE DE DETECCIÓN PARA ESTE TIPO
+    captureInProgress.current.add(type);
     setIsCapturing(true);
-    console.log(`[FacialEnrollment] Captura automática tipo: ${type}`);
+    
+    console.log(`[FacialEnrollment] 🎯 INICIANDO captura automática tipo: ${type} (Total actual: ${capturedImagesRef.current.length})`);
 
     try {
       const embeddingService = FaceEmbeddingService.getInstance();
       
-      // Capturar frame del video
-      const canvas = embeddingService.captureVideoFrame(videoRef.current);
+      // Capturar frame del video con configuración optimizada para Canvas2D
+      const canvas = embeddingService.captureVideoFrame(videoRef.current!);
+      // Optimización para Canvas2D cuando se realizan múltiples operaciones getImageData
+      try {
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+      } catch (e) {
+        // Fallback si willReadFrequently no es soportado
+        canvas.getContext('2d');
+      }
+      
       const embedding = await embeddingService.generateFaceEmbedding(canvas);
       
       if (!embedding) {
@@ -541,27 +727,66 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         timestamp: new Date().toISOString()
       };
 
-      setCapturedImages(prev => [...prev, capturedImage]);
-      console.log(`[FacialEnrollment] Imagen automática ${type} capturada exitosamente`);
+      // ACTUALIZAR ESTADO Y REF INMEDIATAMENTE
+      setCapturedImages(prevImages => {
+        const updatedImages = [...prevImages, capturedImage];
+        
+        // Actualizar REF inmediatamente para evitar capturas duplicadas
+        capturedImagesRef.current = updatedImages;
+        
+        console.log(`[FacialEnrollment] 🎉 Imagen ${type} capturada exitosamente. Total: ${updatedImages.length}/4`);
 
-      // Determinar siguiente estado
-      if (type === 'sonrisa') {
-        setStatus('esperando_ojos_cerrados_automaticos');
-        setCurrentCaptureType('ojos_cerrados');
-        challengeCounter.current = 0;
-        setChallengeProgress(0);
-        blinkHistory.current = [];
-      } else if (type === 'ojos_cerrados') {
-        // Todas las capturas completadas
-        await sendEnrollmentData([...capturedImages, capturedImage]);
-      }
+        // TRANSICIÓN DE ESTADO INMEDIATA
+        setTimeout(() => {
+          if (type === 'sonrisa' && updatedImages.length === 2) {
+            console.log('[FacialEnrollment] 🔄 Transicionando a captura de asentimiento...');
+            setStatus('esperando_asentir_automatico');
+            setCurrentCaptureType('asentir');
+            challengeCounter.current = 0;
+            setChallengeProgress(0);
+            nosePositionHistory.current = [];
+            shouldCaptureAfterNod.current = false;
+            postNodCaptureCounter.current = 0;
+            
+          } else if (type === 'asentir' && updatedImages.length === 3) {
+            console.log('[FacialEnrollment] 🔄 Transicionando a captura de subir cabeza...');
+            setStatus('esperando_subir_cabeza_automatico');
+            setCurrentCaptureType('subir_cabeza');
+            challengeCounter.current = 0;
+            setChallengeProgress(0);
+            nosePositionHistory.current = [];
+            shouldCaptureAfterNod.current = false;
+            postNodCaptureCounter.current = 0;
+            
+          } else if (type === 'subir_cabeza' && updatedImages.length === 4) {
+            console.log('[FacialEnrollment] 🎯 TODAS las capturas completadas, procesando...');
+            setStatus('procesando_imagenes');
+            
+            // DETENER TODA DETECCIÓN INMEDIATAMENTE
+            isRunning.current = false;
+            if (animationRef.current) {
+              cancelAnimationFrame(animationRef.current);
+              animationRef.current = null;
+            }
+            
+            // Pequeña pausa para mostrar el estado de procesamiento
+            setTimeout(async () => {
+              await sendEnrollmentData(updatedImages);
+            }, 1000);
+          }
+        }, 50); // Reducido a 50ms para mayor velocidad
+
+        return updatedImages;
+      });
       
     } catch (error) {
-      console.error(`[FacialEnrollment] Error en captura automática ${type}:`, error);
+      console.error(`[FacialEnrollment] ❌ Error en captura automática ${type}:`, error);
       setStatus('error_registro');
       setErrorMessage(`Error al capturar la imagen ${type}. Intente nuevamente.`);
     } finally {
       setIsCapturing(false);
+      captureInProgress.current.delete(type); // Limpiar flag al finalizar
+      console.log(`[FacialEnrollment] ✅ Finalizando captura ${type}, captureInProgress: ${Array.from(captureInProgress.current)}`);
     }
   };
 
@@ -578,19 +803,19 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         animationRef.current = null;
       }
 
-      // Extraer embeddings
-      const embeddings = images.map(img => img.embedding);
+      // Preparar embeddings en el formato que espera el backend
+      const embeddings = images.map(img => ({
+        data: img.embedding,           // El array de números del embedding
+        type: img.type,               // Tipo de captura (normal, sonrisa, asentir, subir_cabeza)
+        quality: 0.9                  // Calidad fija alta ya que solo capturamos con calidad alta
+      }));
+
+      console.log(`[FacialEnrollment] 📤 Enviando ${embeddings.length} embeddings estructurados al backend`);
       
-      // Preparar datos del usuario
-      const enrollmentData = {
-        userToken,
-        userData,
-        faceEmbeddings: embeddings,
-        captureDetails: images.map(img => ({
-          type: img.type,
-          timestamp: img.timestamp
-        }))
-      };
+      // Log de verificación del formato
+      embeddings.forEach((emb, idx) => {
+        console.log(`[FacialEnrollment] Embedding ${idx + 1}: tipo="${emb.type}", data_length=${emb.data.length}, quality=${emb.quality}`);
+      });
 
       const result = await ApiService.enrollFace(userToken, embeddings);
       
@@ -626,6 +851,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
     setFaceDetected(false);
     setFaceQuality('low');
     setCapturedImages([]);
+    capturedImagesRef.current = []; // Limpiar ref también
     setCurrentCaptureType('normal');
     setIsCapturing(false);
     setChallengeProgress(0);
@@ -634,6 +860,10 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
     frameCount.current = 0;
     challengeCounter.current = 0;
     blinkHistory.current = [];
+    nosePositionHistory.current = []; // Limpiar historial de nariz
+    shouldCaptureAfterNod.current = false; // Reset control post-asentimiento
+    postNodCaptureCounter.current = 0;
+    captureInProgress.current.clear(); // Limpiar flags de captura en progreso
     
     stopCamera();
     setTimeout(() => startCamera(), 1000);
@@ -656,10 +886,17 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         color: 'green',
         isAutomatic: true
       },
-      ojos_cerrados: {
-        title: 'Captura Ojos Cerrados',
-        instruction: 'Cierre los ojos suavemente - Se detectará automáticamente',
-        icon: <FaEyeSlash className="w-6 h-6" />,
+      asentir: {
+        title: 'Captura con Asentimiento',
+        instruction: 'Mueva la cabeza arriba y abajo - Se detectará automáticamente',
+        icon: <FaArrowDown className="w-6 h-6" />,
+        color: 'purple',
+        isAutomatic: true
+      },
+      subir_cabeza: {
+        title: 'Captura de Subir Cabeza',
+        instruction: 'Mueva la cabeza hacia arriba',
+        icon: <FaArrowUp className="w-6 h-6" />,
         color: 'purple',
         isAutomatic: true
       }
@@ -699,10 +936,15 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         text: 'Sonría para captura automática',
         icon: <FaSmile className="w-5 h-5" />
       },
-      'esperando_ojos_cerrados_automaticos': { 
+      'esperando_asentir_automatico': { 
         backgroundColor: '#607123',
-        text: 'Cierre los ojos para captura automática',
-        icon: <FaEyeSlash className="w-5 h-5" />
+        text: 'Mueva la cabeza arriba y abajo para captura automática',
+        icon: <FaArrowDown className="w-5 h-5" />
+      },
+      'esperando_subir_cabeza_automatico': { 
+        backgroundColor: '#9333ea',
+        text: 'Mueva la cabeza hacia arriba para captura automática',
+        icon: <FaArrowUp className="w-5 h-5" />
       },
       'procesando_imagenes': { 
         backgroundColor: '#54a8a0',
@@ -728,7 +970,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
 
     const config = statusConfig[status];
     
-    return (
+  return (
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -743,8 +985,8 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
             <div className="flex items-center justify-center space-x-4 mt-2 text-white/80 text-sm">
               <span>Calidad: {faceQuality}</span>
               <span>•</span>
-              <span>Capturas: {capturedImages.length}/3</span>
-              {['esperando_sonrisa_automatica', 'esperando_ojos_cerrados_automaticos'].includes(status) && (
+              <span>Capturas: {capturedImages.length}/4</span>
+              {['esperando_sonrisa_automatica', 'esperando_asentir_automatico', 'esperando_subir_cabeza_automatico'].includes(status) && (
                 <>
                   <span>•</span>
                   <span>Progreso: {Math.round(challengeProgress)}%</span>
@@ -770,13 +1012,13 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">Registro Biométrico</h2>
-              <p className="text-gray-200">3 capturas específicas para máxima seguridad</p>
+              <p className="text-gray-200">4 capturas específicas para máxima seguridad</p>
             </div>
           </div>
-          
+
           {/* Progreso de capturas */}
           <div className="flex space-x-2">
-            {['normal', 'sonrisa', 'ojos_cerrados'].map((type, index) => (
+            {['normal', 'sonrisa', 'asentir', 'subir_cabeza'].map((type, index) => (
               <div
                 key={type}
                 className={`w-3 h-3 rounded-full transition-all duration-300 ${
@@ -807,18 +1049,18 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
       {/* Área de video */}
       <div className="relative mb-6">
         <div className="relative bg-gray-900 rounded-xl overflow-hidden shadow-lg">
-          <video 
-            ref={videoRef}
+            <video
+              ref={videoRef}
             className="w-full h-full object-cover"
             autoPlay
             muted
-            playsInline
+              playsInline
             style={{ aspectRatio: '16/9' }}
           />
           
           {/* Overlay de detección facial */}
           <AnimatePresence>
-            {faceDetected && (
+              {faceDetected && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -857,12 +1099,12 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
               )}
             </AnimatePresence>
           </div>
-        </div>
-      </div>
-
+              </div>
+            </div>
+            
       {/* Instrucciones y botones de captura */}
       <AnimatePresence>
-        {['esperando_captura_normal', 'esperando_sonrisa_automatica', 'esperando_ojos_cerrados_automaticos'].includes(status) && (
+        {['esperando_captura_normal', 'esperando_sonrisa_automatica', 'esperando_asentir_automatico', 'esperando_subir_cabeza_automatico'].includes(status) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -875,7 +1117,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
                 <div className="text-center">
                   <div className={`bg-${config.color}-100 text-${config.color}-700 p-4 rounded-xl mb-4 inline-block`}>
                     {config.icon}
-                  </div>
+                </div>
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">{config.title}</h3>
                   <p className="text-gray-600 mb-6">{config.instruction}</p>
                   
@@ -914,21 +1156,23 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
                           animate={{ width: `${challengeProgress}%` }}
                           transition={{ duration: 0.3 }}
                         />
-                      </div>
+                </div>
                       <p className="text-sm text-gray-600">
                         {Math.round(challengeProgress)}% - {
                           currentCaptureType === 'sonrisa' 
                             ? 'Mantenga la sonrisa natural' 
-                            : 'Mantenga los ojos cerrados'
+                            : currentCaptureType === 'asentir'
+                              ? 'Mueva la cabeza arriba y abajo'
+                              : 'Mueva la cabeza hacia arriba'
                         }
                       </p>
                       {isCapturing && (
                         <div className="flex items-center justify-center mt-3 text-green-600">
                           <FaSyncAlt className="w-4 h-4 animate-spin mr-2" />
                           <span className="text-sm font-medium">Capturando imagen automáticamente...</span>
-                        </div>
-                      )}
-                    </div>
+              </div>
+            )}
+          </div>
                   )}
                   
                   {faceQuality !== 'high' && (
@@ -973,7 +1217,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
 
       {/* Estado de error */}
       <AnimatePresence>
-        {status === 'error_registro' && (
+            {status === 'error_registro' && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -992,7 +1236,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
               >
                 Reintentar
               </button>
-            </div>
+          </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1010,10 +1254,10 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
               <FaCheck className="w-5 h-5 text-green-600 mr-3" />
               <div>
                 <h3 className="text-green-800 font-medium">Registro completado exitosamente</h3>
-                <p className="text-green-700 text-sm mt-1">Su perfil biométrico ha sido configurado correctamente con las 3 capturas específicas</p>
-              </div>
+                <p className="text-green-700 text-sm mt-1">Su perfil biométrico ha sido configurado correctamente con las 4 capturas específicas</p>
             </div>
-          </motion.div>
+        </div>
+      </motion.div>
         )}
       </AnimatePresence>
     </div>

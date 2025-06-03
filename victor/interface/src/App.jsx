@@ -21,7 +21,12 @@ import {
   FaEyeSlash,
   FaSpinner,
   FaCheckCircle,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaServer,
+  FaDatabase,
+  FaWifi,
+  FaTimes,
+  FaSyncAlt
 } from "react-icons/fa";
 
 function App() {
@@ -30,6 +35,17 @@ function App() {
   const [userToken, setUserToken] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Estados para verificación del sistema
+  const [systemStatus, setSystemStatus] = useState({
+    backend: 'checking', // 'online', 'offline', 'checking'
+    database: 'checking', // 'connected', 'disconnected', 'checking'
+    lastCheck: null,
+    totalUsers: 0,
+    activeSessions: 0
+  });
+  const [showSystemAlert, setShowSystemAlert] = useState(true);
+  const [isCheckingSystem, setIsCheckingSystem] = useState(false);
   
   // Estados para el formulario de registro
   const [registrationData, setRegistrationData] = useState({
@@ -56,13 +72,75 @@ function App() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   
-  // Limpiar mensajes después de 5 segundos
+  // Verificar estado del sistema al cargar la aplicación
+  React.useEffect(() => {
+    checkSystemStatus();
+    
+    // Verificar cada 60 segundos si está autenticado (menos frecuente)
+    // Verificar cada 30 segundos si no está autenticado
+    const interval = setInterval(() => {
+      checkSystemStatus();
+    }, isAuthenticated ? 60000 : 30000);
+    
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+  
+  // Función para verificar el estado del backend
+  const checkSystemStatus = async () => {
+    try {
+      setIsCheckingSystem(true);
+      console.log('[SystemCheck] Verificando estado del backend...');
+      
+      // Primero hacer health check básico
+      const healthResponse = await ApiService.healthCheck();
+      
+      if (healthResponse.success) {
+        // Si health check es exitoso, obtener información detallada
+        const infoResponse = await ApiService.getServerInfo();
+        
+        if (infoResponse.success && infoResponse.info) {
+          setSystemStatus({
+            backend: 'online',
+            database: infoResponse.info.database === 'connected' ? 'connected' : 'disconnected',
+            lastCheck: new Date(),
+            totalUsers: infoResponse.info.stats?.total_users || 0,
+            activeSessions: infoResponse.info.stats?.active_sessions || 0
+          });
+          console.log('[SystemCheck] ✅ Sistema funcionando correctamente');
+        } else {
+          // Health check ok pero no hay info detallada
+          setSystemStatus({
+            backend: 'online',
+            database: 'checking',
+            lastCheck: new Date(),
+            totalUsers: 0,
+            activeSessions: 0
+          });
+        }
+      } else {
+        throw new Error(healthResponse.error || 'Backend no responde correctamente');
+      }
+    } catch (error) {
+      console.error('[SystemCheck] ❌ Error verificando sistema:', error);
+      setSystemStatus({
+        backend: 'offline',
+        database: 'disconnected',
+        lastCheck: new Date(),
+        totalUsers: 0,
+        activeSessions: 0
+      });
+    } finally {
+      setIsCheckingSystem(false);
+    }
+  };
+  
+  // Limpiar mensajes después de 4 segundos (más rápido que antes)
   React.useEffect(() => {
     if (successMessage || errorMessage) {
       const timer = setTimeout(() => {
         setSuccessMessage('');
         setErrorMessage('');
-      }, 5000);
+      }, 4000);
       return () => clearTimeout(timer);
     }
   }, [successMessage, errorMessage]);
@@ -266,34 +344,224 @@ function App() {
   // Componente de notificación
   const Notification = ({ type, message, onClose }) => (
     <motion.div
-      initial={{ opacity: 0, y: -50, x: '100%' }}
+      initial={{ opacity: 0, y: -20, x: '100%' }}
       animate={{ opacity: 1, y: 0, x: 0 }}
-      exit={{ opacity: 0, y: -50, x: '100%' }}
-      className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
-        type === 'success' ? 'bg-green-500' : 'bg-red-500'
-      } text-white max-w-sm`}
+      exit={{ opacity: 0, y: -20, x: '100%' }}
+      className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl backdrop-blur-sm border max-w-sm ${
+        type === 'success' 
+          ? 'bg-green-50 bg-opacity-95 border-green-200 text-green-800' 
+          : 'bg-red-50 bg-opacity-95 border-red-200 text-red-800'
+      }`}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
+      <div className="flex items-start space-x-3">
+        <div className={`p-1 rounded-lg ${
+          type === 'success' ? 'bg-green-500' : 'bg-red-500'
+        }`}>
           {type === 'success' ? (
-            <FaCheckCircle className="w-5 h-5" />
+            <FaCheckCircle className="w-4 h-4 text-white" />
           ) : (
-            <FaExclamationTriangle className="w-5 h-5" />
+            <FaExclamationTriangle className="w-4 h-4 text-white" />
           )}
-          <p className="text-sm font-medium">{message}</p>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium leading-5">{message}</p>
         </div>
         <button
           onClick={onClose}
-          className="ml-2 text-white hover:text-gray-200"
+          className={`p-1 rounded-md transition-colors ${
+            type === 'success' 
+              ? 'hover:bg-green-200 text-green-600' 
+              : 'hover:bg-red-200 text-red-600'
+          }`}
         >
-          ×
+          <FaTimes className="w-3 h-3" />
         </button>
       </div>
     </motion.div>
   );
 
+  // Componente de alerta del estado del sistema mejorado
+  const SystemStatusAlert = () => {
+    const getStatusInfo = () => {
+      const isSystemOnline = systemStatus.backend === 'online' && systemStatus.database === 'connected';
+      
+      if (isSystemOnline) {
+        return {
+          color: 'green',
+          bg: 'bg-green-50',
+          border: 'border-green-200', 
+          text: 'text-green-700',
+          icon: 'text-green-500',
+          status: '✅ Sistema Operativo',
+          description: `${systemStatus.totalUsers} usuarios • ${systemStatus.activeSessions} sesiones activas`
+        };
+      } else if (systemStatus.backend === 'checking' || isCheckingSystem) {
+        return {
+          color: 'blue',
+          bg: 'bg-blue-50',
+          border: 'border-blue-200',
+          text: 'text-blue-700', 
+          icon: 'text-blue-500',
+          status: '🔍 Verificando Sistema...',
+          description: 'Comprobando conexión con servidor y base de datos'
+        };
+      } else {
+        return {
+          color: 'red',
+          bg: 'bg-red-50',
+          border: 'border-red-200',
+          text: 'text-red-700',
+          icon: 'text-red-500', 
+          status: '❌ Sistema No Disponible',
+          description: 'Backend o base de datos desconectados'
+        };
+      }
+    };
+
+    const statusInfo = getStatusInfo();
+    const isSystemOnline = systemStatus.backend === 'online' && systemStatus.database === 'connected';
+
+    // Auto-ocultar después de 8 segundos si todo está funcionando bien
+    React.useEffect(() => {
+      if (isSystemOnline && showSystemAlert) {
+        const timer = setTimeout(() => {
+          setShowSystemAlert(false);
+        }, 8000);
+        return () => clearTimeout(timer);
+      }
+    }, [isSystemOnline, showSystemAlert]);
+
+    if (!showSystemAlert) return null;
+
+    // Versión SUPER minimalista cuando todo está bien
+    if (isSystemOnline) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className={`fixed top-4 right-4 z-40 max-w-xs p-3 rounded-lg shadow-sm ${statusInfo.bg} ${statusInfo.border} border backdrop-blur-sm bg-opacity-90`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 ${statusInfo.bg.replace('50', '400')} rounded-full animate-pulse`}></div>
+              <div>
+                <p className={`font-medium text-sm ${statusInfo.text}`}>Sistema OK</p>
+                <p className={`text-xs ${statusInfo.text} opacity-60`}>
+                  {systemStatus.totalUsers} usuarios online
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setShowSystemAlert(false)}
+              className={`p-1 rounded-md hover:bg-white hover:bg-opacity-30 transition-colors ${statusInfo.text} opacity-40 hover:opacity-60`}
+              title="Cerrar"
+            >
+              <FaTimes className="w-3 h-3" />
+            </button>
+          </div>
+        </motion.div>
+      );
+    }
+
+    // Versión compacta para problemas (menos intrusiva que antes)
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-40 max-w-md p-4 rounded-lg shadow-lg ${statusInfo.bg} ${statusInfo.border} border backdrop-blur-sm bg-opacity-95`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            {isCheckingSystem ? (
+              <FaSyncAlt className={`w-4 h-4 animate-spin ${statusInfo.icon}`} />
+            ) : (
+              <FaExclamationTriangle className={`w-4 h-4 ${statusInfo.icon}`} />
+            )}
+            <div>
+              <h4 className={`font-semibold text-sm ${statusInfo.text}`}>
+                {statusInfo.status}
+              </h4>
+              <p className={`text-xs ${statusInfo.text} opacity-70 mt-1`}>
+                {statusInfo.description}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={checkSystemStatus}
+              disabled={isCheckingSystem}
+              className={`p-1.5 rounded-md hover:bg-white hover:bg-opacity-30 transition-colors ${statusInfo.text} opacity-60 hover:opacity-80`}
+              title="Verificar sistema"
+            >
+              <FaSyncAlt className={`w-3 h-3 ${isCheckingSystem ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowSystemAlert(false)}
+              className={`p-1.5 rounded-md hover:bg-white hover:bg-opacity-30 transition-colors ${statusInfo.text} opacity-60 hover:opacity-80`}
+              title="Cerrar"
+            >
+              <FaTimes className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
   return (
     <div className="App min-h-screen bg-gray-50">
+      {/* Alerta del estado del sistema */}
+      <AnimatePresence>
+        {showSystemAlert && <SystemStatusAlert />}
+      </AnimatePresence>
+
+      {/* Botón flotante mejorado para mostrar estado del sistema cuando está oculto */}
+      <AnimatePresence>
+        {!showSystemAlert && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowSystemAlert(true)}
+            className={`fixed bottom-6 right-6 z-30 p-3 rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 ${
+              systemStatus.backend === 'online' && systemStatus.database === 'connected'
+                ? 'bg-green-500 bg-opacity-90 hover:bg-green-600 hover:shadow-green-500/25'
+                : systemStatus.backend === 'checking'
+                ? 'bg-blue-500 bg-opacity-90 hover:bg-blue-600 hover:shadow-blue-500/25'
+                : 'bg-red-500 bg-opacity-90 hover:bg-red-600 hover:shadow-red-500/25'
+            } border border-white border-opacity-20`}
+            title={`Sistema: ${
+              systemStatus.backend === 'online' && systemStatus.database === 'connected'
+                ? 'Operativo ✅'
+                : systemStatus.backend === 'checking'
+                ? 'Verificando... 🔍'
+                : 'No disponible ❌'
+            }`}
+          >
+            <div className="relative">
+              {isCheckingSystem ? (
+                <FaSyncAlt className="w-4 h-4 text-white animate-spin" />
+              ) : systemStatus.backend === 'online' && systemStatus.database === 'connected' ? (
+                <FaCheckCircle className="w-4 h-4 text-white" />
+              ) : (
+                <FaExclamationTriangle className="w-4 h-4 text-white" />
+              )}
+              
+              {/* Indicador pulsante para estado online */}
+              {systemStatus.backend === 'online' && systemStatus.database === 'connected' && !isCheckingSystem && (
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-300 rounded-full animate-ping"></div>
+              )}
+            </div>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Notificaciones */}
       <AnimatePresence>
         {successMessage && (
@@ -321,7 +589,7 @@ function App() {
               <div className="bg-gradient-to-br from-blue-900 to-blue-800 p-2 rounded-lg" style={{backgroundColor: '#3e5866'}}>
                 <FaShieldAlt className="w-6 h-6 text-white" />
               </div>
-              <div>
+          <div>
                 <h1 className="text-2xl font-semibold" style={{color: '#3e5866'}}>SecureAuth</h1>
                 <p className="text-gray-500 text-sm">Sistema de Autenticación Biométrica Avanzado</p>
               </div>
@@ -354,7 +622,7 @@ function App() {
             )}
 
             {mode !== 'home' && mode !== 'dashboard' && (
-              <button 
+                  <button 
                 onClick={() => setMode('home')}
                 className="font-medium py-2 px-4 rounded-lg border transition-colors flex items-center space-x-2 hover:opacity-80"
                 style={{
@@ -364,7 +632,7 @@ function App() {
               >
                 <FaHome className="w-4 h-4" />
                 <span>Inicio</span>
-              </button>
+                  </button>
             )}
           </div>
         </div>
@@ -396,10 +664,6 @@ function App() {
                   <h1 className="text-5xl font-bold mb-4" style={{color: '#3e5866'}}>
                     Bienvenido a SecureAuth
                   </h1>
-                  <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-                    Sistema de autenticación biométrica avanzado con reconocimiento facial e inteligencia artificial. 
-                    Seguridad de nivel empresarial para proteger su identidad digital.
-                  </p>
                 </motion.div>
 
                 <motion.div
@@ -408,35 +672,6 @@ function App() {
                   transition={{ delay: 0.4, duration: 0.5 }}
                   className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12"
                 >
-                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-                    <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{backgroundColor: '#cbe552'}}>
-                      <FaCamera className="w-6 h-6" style={{color: '#607123'}} />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2" style={{color: '#3e5866'}}>Reconocimiento Facial</h3>
-                    <p className="text-gray-600 text-sm">
-                      Tecnología de última generación con detección de vida para máxima seguridad
-                    </p>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-                    <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{backgroundColor: '#95b54c'}}>
-                      <FaLock className="w-6 h-6 text-white" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2" style={{color: '#3e5866'}}>Encriptación Avanzada</h3>
-                    <p className="text-gray-600 text-sm">
-                      Sus datos biométricos están protegidos con encriptación de grado militar
-                    </p>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-                    <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{backgroundColor: '#54a8a0'}}>
-                      <FaCog className="w-6 h-6 text-white" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2" style={{color: '#3e5866'}}>Fácil Integración</h3>
-                    <p className="text-gray-600 text-sm">
-                      Sistema modular que se adapta a cualquier infraestructura empresarial
-                    </p>
-                  </div>
                 </motion.div>
 
                 <motion.div
@@ -485,7 +720,7 @@ function App() {
               className="min-h-screen flex items-center justify-center px-4 py-8"
             >
               <div className="max-w-md w-full space-y-8">
-                <div className="text-center">
+              <div className="text-center">
                   <div className="inline-flex p-4 rounded-full mb-4" style={{backgroundColor: '#e8f5f3'}}>
                     <FaSignInAlt className="w-8 h-8" style={{color: '#3e5866'}} />
                   </div>
@@ -613,7 +848,7 @@ function App() {
                         placeholder="••••••••"
                         required
                       />
-                      <button
+                  <button 
                         type="button"
                         onClick={() => setShowLoginPassword(!showLoginPassword)}
                         className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
@@ -774,13 +1009,13 @@ function App() {
                             }`}
                             placeholder="••••••••"
                           />
-                          <button
+                  <button 
                             type="button"
                             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                             className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                          >
+                  >
                             {showConfirmPassword ? <FaEyeSlash className="w-5 h-5" /> : <FaEye className="w-5 h-5" />}
-                          </button>
+                  </button>
                         </div>
                         {formErrors.confirmPassword && (
                           <p className="text-red-500 text-sm mt-1">{formErrors.confirmPassword}</p>

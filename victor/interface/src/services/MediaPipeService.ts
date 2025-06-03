@@ -143,9 +143,9 @@ class MediaPipeService {
     }
 
     try {
-      const blendshapes = result.faceBlendshapes[0].categories;
-      const mouthSmileLeft = blendshapes.find(b => b.categoryName === 'mouthSmileLeft')?.score || 0;
-      const mouthSmileRight = blendshapes.find(b => b.categoryName === 'mouthSmileRight')?.score || 0;
+    const blendshapes = result.faceBlendshapes[0].categories;
+    const mouthSmileLeft = blendshapes.find(b => b.categoryName === 'mouthSmileLeft')?.score || 0;
+    const mouthSmileRight = blendshapes.find(b => b.categoryName === 'mouthSmileRight')?.score || 0;
 
       // Se considera sonrisa si ambos lados están sonriendo con un umbral de 0.3 (más permisivo)
       return mouthSmileLeft > 0.3 && mouthSmileRight > 0.3;
@@ -164,12 +164,12 @@ class MediaPipeService {
     }
 
     try {
-      const blendshapes = result.faceBlendshapes[0].categories;
-      const eyeBlinkLeft = blendshapes.find(b => b.categoryName === 'eyeBlinkLeft')?.score || 0;
-      const eyeBlinkRight = blendshapes.find(b => b.categoryName === 'eyeBlinkRight')?.score || 0;
+    const blendshapes = result.faceBlendshapes[0].categories;
+    const eyeBlinkLeft = blendshapes.find(b => b.categoryName === 'eyeBlinkLeft')?.score || 0;
+    const eyeBlinkRight = blendshapes.find(b => b.categoryName === 'eyeBlinkRight')?.score || 0;
 
-      // Se considera parpadeo si ambos ojos están cerrados con un umbral de 0.5
-      return eyeBlinkLeft > 0.5 && eyeBlinkRight > 0.5;
+    // Se considera parpadeo si ambos ojos están cerrados con un umbral de 0.5
+    return eyeBlinkLeft > 0.5 && eyeBlinkRight > 0.5;
     } catch (error) {
       this.logError('Error detectando parpadeo:', error);
       return false;
@@ -197,22 +197,22 @@ class MediaPipeService {
       if (typeof noseY !== 'number') {
         return false;
       }
-      
-      // Necesitamos un historial para detectar el movimiento
-      if (previousPositions.length < 10) {
-        return false;
-      }
+    
+    // Necesitamos un historial para detectar el movimiento
+    if (previousPositions.length < 10) {
+      return false;
+    }
 
-      // Algoritmo simple para detectar un movimiento hacia abajo y luego hacia arriba
-      const recentPositions = previousPositions.slice(-10);
-      const minY = Math.min(...recentPositions);
-      const maxY = Math.max(...recentPositions);
-      const range = maxY - minY;
+    // Algoritmo simple para detectar un movimiento hacia abajo y luego hacia arriba
+    const recentPositions = previousPositions.slice(-10);
+    const minY = Math.min(...recentPositions);
+    const maxY = Math.max(...recentPositions);
+    const range = maxY - minY;
 
-      // Si el rango de movimiento es significativo y hemos visto un patrón de subida y bajada
+    // Si el rango de movimiento es significativo y hemos visto un patrón de subida y bajada
       return range > 0.05 && 
-             recentPositions.indexOf(maxY) < recentPositions.indexOf(minY) && 
-             recentPositions.indexOf(minY) > recentPositions.length / 2;
+           recentPositions.indexOf(maxY) < recentPositions.indexOf(minY) && 
+           recentPositions.indexOf(minY) > recentPositions.length / 2;
     } catch (error) {
       this.logError('Error detectando asentimiento:', error);
       return false;
@@ -224,10 +224,10 @@ class MediaPipeService {
    */
   public dispose(): void {
     try {
-      if (this.state.faceLandmarker) {
-        this.state.faceLandmarker.close();
-        this.state.faceLandmarker = null;
-        this.state.isInitialized = false;
+    if (this.state.faceLandmarker) {
+      this.state.faceLandmarker.close();
+      this.state.faceLandmarker = null;
+      this.state.isInitialized = false;
         console.log('[MediaPipe] Recursos liberados');
       }
     } catch (error) {

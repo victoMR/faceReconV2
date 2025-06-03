@@ -73,7 +73,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
         const mediaPipeService = MediaPipeService.getInstance();
         if (!mediaPipeService.isInitialized()) {
           console.log('[FacialLogin] Inicializando MediaPipe...');
-          await mediaPipeService.initialize();
+        await mediaPipeService.initialize();
         }
         
         // Inicializar FaceEmbeddingService  
@@ -153,9 +153,9 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
               })
               .catch(error => {
                 console.error('[FacialLogin] Error reproduciendo video:', error);
-                setStatus('error_login');
+              setStatus('error_login');
                 setErrorMessage('No se pudo iniciar la reproducción del video. Verifique los permisos de su navegador.');
-              });
+            });
           }
         };
 
@@ -188,14 +188,14 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
   // Detener la cámara
   const stopCamera = () => {
     try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
         console.log('[FacialLogin] Cámara detenida');
-      }
+    }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
       }
     } catch (error) {
       console.error('[FacialLogin] Error deteniendo cámara:', error);
@@ -246,12 +246,12 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       }
 
       try {
-        const result = mediaPipeService.detectFaceInVideo(videoRef.current, timestamp);
-        const isFaceDetected = mediaPipeService.hasFaceDetected(result);
-        setFaceDetected(isFaceDetected);
+      const result = mediaPipeService.detectFaceInVideo(videoRef.current, timestamp);
+      const isFaceDetected = mediaPipeService.hasFaceDetected(result);
+      setFaceDetected(isFaceDetected);
 
-        if (isFaceDetected && result) {
-          evaluateFaceQuality(result);
+      if (isFaceDetected && result) {
+        evaluateFaceQuality(result);
           const currentQuality = evaluateFaceQualitySync(result);
           processCurrentState(result, currentQuality);
         } else {
@@ -262,7 +262,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
             stableFrameCounter.current++;
             if (stableFrameCounter.current > 45) {
               console.log('[FacialLogin] Rostro perdido, volviendo a detección');
-              setStatus('detectando_rostro');
+        setStatus('detectando_rostro');
               stableFrameCounter.current = 0;
             }
           }
@@ -272,7 +272,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       }
 
       if (isRunning.current) {
-        animationRef.current = requestAnimationFrame(detectFace);
+      animationRef.current = requestAnimationFrame(detectFace);
       }
     };
 
@@ -287,18 +287,18 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
 
     try {
       switch (currentStatusRef.current) {
-        case 'detectando_rostro':
+      case 'detectando_rostro':
           if (currentQuality === 'high') {
             console.log('[FacialLogin] Rostro de alta calidad detectado, iniciando liveness');
             setStatus('challenge_sonrisa');
             setCurrentChallenge('sonrisa');
             challengeCounter.current = 0;
             setChallengeProgress(0);
-          }
-          break;
-
-        case 'challenge_sonrisa':
-          if (mediaPipeService.isSmiling(result)) {
+        }
+        break;
+        
+      case 'challenge_sonrisa':
+        if (mediaPipeService.isSmiling(result)) {
             challengeCounter.current++;
             setChallengeProgress(Math.min((challengeCounter.current / 10) * 100, 100));
             
@@ -306,20 +306,20 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
               console.log('[FacialLogin] Sonrisa completada');
               setCompletedChallenges(prev => [...prev, 'sonrisa']);
               setStatus('challenge_parpadeo');
-              setCurrentChallenge('parpadeo');
+            setCurrentChallenge('parpadeo');
               challengeCounter.current = 0;
               setChallengeProgress(0);
               blinkHistory.current = [];
-            }
-          } else {
+          }
+        } else {
             if (challengeCounter.current > 0) {
               challengeCounter.current = Math.max(0, challengeCounter.current - 1);
               setChallengeProgress(Math.min((challengeCounter.current / 10) * 100, 100));
             }
-          }
-          break;
-
-        case 'challenge_parpadeo':
+        }
+        break;
+        
+      case 'challenge_parpadeo':
           const isBlinking = mediaPipeService.isBlinking(result);
           blinkHistory.current.push(isBlinking);
           
@@ -338,10 +338,10 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
             nosePositionHistory.current = [];
           } else {
             setChallengeProgress(Math.min((blinks / 2) * 100, 100));
-          }
-          break;
-
-        case 'challenge_asentir':
+        }
+        break;
+        
+      case 'challenge_asentir':
           if (result.faceLandmarks && result.faceLandmarks.length > 0) {
             const landmarks = result.faceLandmarks[0];
             if (landmarks && landmarks.length > 1) {
@@ -353,7 +353,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
                   nosePositionHistory.current.shift();
                 }
                 
-                if (mediaPipeService.isNodding(result, nosePositionHistory.current)) {
+        if (mediaPipeService.isNodding(result, nosePositionHistory.current)) {
                   challengeCounter.current++;
                   setChallengeProgress(Math.min((challengeCounter.current / 8) * 100, 100));
                   
@@ -390,7 +390,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       }
     } catch (error) {
       console.error('[FacialLogin] Error detectando parpadeos:', error);
-    }
+          }
     
     return blinks;
   };
@@ -406,7 +406,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       
       if (!landmarks || landmarks.length < 455) {
         return 'low';
-      }
+        }
       
       const faceWidth = Math.abs(landmarks[454]?.x - landmarks[234]?.x) || 0;
       const faceHeight = Math.abs(landmarks[10]?.y - landmarks[152]?.y) || 0;
@@ -434,8 +434,8 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
     }
 
     try {
-      const landmarks = result.faceLandmarks[0];
-      
+    const landmarks = result.faceLandmarks[0];
+    
       if (!landmarks || landmarks.length < 455) {
         setFaceQuality('low');
         return;
@@ -456,7 +456,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
         newQuality = 'high';
       } else if (faceWidth > 0.1 && faceHeight > 0.1) {
         newQuality = 'medium';
-      } else {
+    } else {
         newQuality = 'low';
       }
       
@@ -493,10 +493,10 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       const canvas = embeddingService.captureVideoFrame(videoRef.current);
       const embedding = await embeddingService.generateFaceEmbedding(canvas);
       
-      if (!embedding) {
+    if (!embedding) {
         throw new Error('No se pudo generar el embedding facial');
-      }
-
+    }
+    
       console.log('[FacialLogin] Embedding generado, verificando con servidor...');
       setStatus('verificando_identidad');
       
@@ -659,7 +659,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       }
     ];
 
-    return (
+  return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -672,7 +672,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
           </div>
           <h3 className="font-semibold text-lg" style={{color: '#3e5866'}}>Verificación de Identidad</h3>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {challenges.map((challenge) => (
             <motion.div 
@@ -727,8 +727,8 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
                     {Math.round(challengeProgress)}% completado
                   </p>
                 </div>
-              )}
-              
+            )}
+            
               {challenge.completed && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -765,7 +765,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
             </div>
           </div>
         </div>
-      </div>
+          </div>
 
       {/* Indicador de estado */}
       <div className="mb-6">
@@ -775,15 +775,15 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       {/* Área de video */}
       <div className="relative mb-6">
         <div className="relative bg-gray-900 rounded-xl overflow-hidden shadow-lg">
-          <video 
-            ref={videoRef}
-            className="w-full h-full object-cover"
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
             autoPlay
             muted
-            playsInline
+              playsInline
             style={{ aspectRatio: '16/9' }}
-          />
-          
+            />
+            
           {/* Overlay de detección facial */}
           <AnimatePresence>
             {faceDetected && (
@@ -811,7 +811,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
               </motion.div>
             )}
           </AnimatePresence>
-
+              
           {/* Indicador de calidad facial */}
           <div className="absolute top-4 left-4">
             <AnimatePresence>
@@ -859,16 +859,16 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
                     {currentChallenge === 'parpadeo' && <FaEye className="w-3 h-3" />}
                     {currentChallenge === 'asentir' && <FaArrowDown className="w-3 h-3" />}
                     <span>{Math.round(challengeProgress)}%</span>
-                  </div>
+              </div>
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
-          
+            </div>
+            
           <canvas ref={canvasRef} className="hidden" />
-        </div>
-      </div>
-
+                </div>
+              </div>
+            
       {/* Instrucciones del desafío */}
       <AnimatePresence>
         {['challenge_sonrisa', 'challenge_parpadeo', 'challenge_asentir'].includes(status) && (
@@ -899,20 +899,20 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
               <div className="flex-1">
                 <h3 className="text-red-800 font-semibold text-lg">Error de Autenticación</h3>
                 <p className="text-red-600 mt-1">{errorMessage}</p>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
                   onClick={handleRetry}
                   className="mt-4 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2"
-                >
+            >
                   <FaSyncAlt className="w-4 h-4" />
                   <span>Intentar de Nuevo</span>
-                </motion.button>
+            </motion.button>
               </div>
             </div>
           </motion.div>
         )}
-
+            
         {status === 'login_exitoso' && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -933,10 +933,10 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
                 <p className="text-green-600 mt-1">
                   Su identidad ha sido verificada correctamente. Bienvenido al sistema.
                 </p>
-              </div>
+          </div>
             </div>
           </motion.div>
-        )}
+          )}
       </AnimatePresence>
     </div>
   );

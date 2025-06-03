@@ -1,0 +1,58 @@
+{
+  "name": "facial-auth-backend",
+  "version": "1.0.0",
+  "description": "Sistema completo de autenticación biométrica facial - Backend API",
+  "main": "server-real.js",
+  "scripts": {
+    "start": "node server-real.js",
+    "dev": "nodemon server-real.js",
+    "test": "jest",
+    "migrate": "node scripts/migrate.js",
+    "seed": "node scripts/seed.js",
+    "backup": "node scripts/backup.js"
+  },
+  "keywords": [
+    "facial-recognition",
+    "biometric-auth",
+    "express",
+    "sqlite",
+    "jwt",
+    "bcrypt",
+    "authentication"
+  ],
+  "author": "Sistema Biométrico Auth",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "sqlite3": "^5.1.6",
+    "multer": "^1.4.5-lts.1",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "winston": "^3.11.0",
+    "dotenv": "^16.3.1",
+    "compression": "^1.7.4",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "@types/jest": "^29.5.8"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/facial-auth/backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/facial-auth/backend/issues"
+  },
+  "homepage": "https://github.com/facial-auth/backend#readme"
+} 

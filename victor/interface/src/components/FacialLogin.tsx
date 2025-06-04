@@ -5,6 +5,7 @@ import FaceEmbeddingService from '../services/FaceEmbeddingService';
 import ApiService from '../services/ApiService';
 import { FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 import { FaSmile, FaEye, FaArrowDown, FaCheck, FaExclamationTriangle, FaCamera, FaSyncAlt, FaUser } from 'react-icons/fa';
+import * as faceapi from 'face-api.js';
 
 // Estados posibles durante el proceso de login
 type LoginStatus = 
@@ -336,7 +337,7 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
             challengeCounter.current = 0;
             setChallengeProgress(0);
             nosePositionHistory.current = [];
-          } else {
+        } else {
             setChallengeProgress(Math.min((blinks / 2) * 100, 100));
         }
         break;
@@ -478,11 +479,8 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       console.log('[FacialLogin] Iniciando verificación final...');
       setStatus('generando_embedding');
       
-      isRunning.current = false;
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      // NO detener el bucle de detección para mantener el video activo
+      // isRunning.current = false;
       
       if (!videoRef.current) {
         throw new Error('Elemento de video no disponible');
@@ -490,17 +488,109 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
 
       const embeddingService = FaceEmbeddingService.getInstance();
       
-      const canvas = embeddingService.captureVideoFrame(videoRef.current);
-      const embedding = await embeddingService.generateFaceEmbedding(canvas);
+      // Intentar generar embedding con múltiples intentos
+      let embedding: number[] | null = null;
+      const maxAttempts = 5;
+      let attempt = 0;
       
-    if (!embedding) {
-        throw new Error('No se pudo generar el embedding facial');
-    }
+      console.log('[FacialLogin] Intentando generar embedding con múltiples intentos...');
+      
+      while (attempt < maxAttempts && !embedding) {
+        attempt++;
+        console.log(`[FacialLogin] Intento ${attempt}/${maxAttempts} para generar embedding...`);
+        
+        try {
+          // Pequeña pausa para estabilizar el video
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Intentar directamente con el video (sin canvas intermedio)
+          embedding = await embeddingService.generateFaceEmbedding(videoRef.current);
+          
+          if (embedding) {
+            console.log(`[FacialLogin] ✅ Embedding generado exitosamente en intento ${attempt}`);
+            break;
+          } else {
+            console.warn(`[FacialLogin] ❌ Intento ${attempt} falló, reintentando...`);
+            
+            // Si falla, intentar con canvas capturado
+            if (attempt === maxAttempts - 1) {
+              console.log('[FacialLogin] Último intento con canvas capturado...');
+              const canvas = embeddingService.captureVideoFrame(videoRef.current);
+              embedding = await embeddingService.generateFaceEmbedding(canvas);
+            }
+          }
+          
+        } catch (attemptError) {
+          console.warn(`[FacialLogin] Error en intento ${attempt}:`, attemptError);
+          
+          // Pausa más larga entre intentos fallidos
+          if (attempt < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      }
     
-      console.log('[FacialLogin] Embedding generado, verificando con servidor...');
+      if (!embedding) {
+        // Intentar una última vez con diferentes configuraciones de face-api.js
+        console.log('[FacialLogin] Último recurso: intentando con configuración alternativa...');
+        
+        try {
+          // Crear un canvas temporal con mejor resolución
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          if (ctx && videoRef.current) {
+            // Usar mayor resolución para el canvas
+            canvas.width = videoRef.current.videoWidth || 640;
+            canvas.height = videoRef.current.videoHeight || 480;
+            
+            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+            
+            // Intentar con configuración muy permisiva
+            const detections = await faceapi
+              .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions({ 
+                inputSize: 160, 
+                scoreThreshold: 0.1  // Muy permisivo
+              }))
+              .withFaceLandmarks()
+              .withFaceDescriptors();
+              
+            if (detections.length > 0) {
+              const bestDetection = detections.reduce((best, current) => 
+                current.detection.score > best.detection.score ? current : best
+              );
+              
+              embedding = Array.from(bestDetection.descriptor);
+              console.log('[FacialLogin] ✅ Embedding generado con configuración alternativa');
+            }
+          }
+        } catch (lastError) {
+          console.error('[FacialLogin] Error en último recurso:', lastError);
+        }
+      }
+      
+      if (!embedding) {
+        throw new Error('No se pudo generar el embedding facial después de múltiples intentos. Intente con mejor iluminación.');
+      }
+      
+      // Validar calidad del embedding antes de usar
+      const validation = embeddingService.validateEmbeddingQuality(embedding, true); // true = configuración alternativa
+      if (!validation.isValid) {
+        throw new Error(`Calidad del embedding insuficiente: ${validation.reason}`);
+      }
+      
+      console.log(`[FacialLogin] Embedding final validado - Calidad: ${validation.qualityScore.toFixed(3)}`);
+      console.log('[FacialLogin] Enviando embedding al servidor para verificación...');
       setStatus('verificando_identidad');
       
       const result = await ApiService.loginFace(embedding);
+      
+      // Ahora sí detener el bucle de detección
+      isRunning.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
       
       if (result.success && result.userToken) {
         console.log('[FacialLogin] Login exitoso');
@@ -514,8 +604,16 @@ const FacialLogin: React.FC<FacialLoginProps> = ({ onLoginComplete }) => {
       
     } catch (error) {
       console.error('[FacialLogin] Error en verificación final:', error);
+      
+      // Asegurar que el bucle se detenga en caso de error
+      isRunning.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      
       setStatus('error_login');
-      setErrorMessage('Error durante la verificación. Intente nuevamente.');
+      setErrorMessage(error instanceof Error ? error.message : 'Error durante la verificación. Intente nuevamente.');
     }
   };
 

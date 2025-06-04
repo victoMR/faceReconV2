@@ -109,7 +109,16 @@ class FaceEmbeddingService {
             
             // Convertir Float32Array a Array de números
             const embedding = Array.from(bestDetection.descriptor);
-            console.log(`[FaceEmbeddingService] ✅ Embedding generado: ${embedding.length} dimensiones`);
+            
+            // Validar calidad del embedding antes de devolverlo
+            const validation = this.validateEmbeddingQuality(embedding, i > 0); // Más permisivo para configuraciones 2 y 3
+            if (!validation.isValid) {
+              console.warn(`[FaceEmbeddingService] ⚠️ Embedding generado pero con baja calidad: ${validation.reason}`);
+              // Continuar con la siguiente configuración en lugar de devolver embedding de baja calidad
+              continue;
+            }
+            
+            console.log(`[FaceEmbeddingService] ✅ Embedding validado: ${embedding.length} dimensiones, calidad: ${validation.qualityScore.toFixed(3)}`);
             
             return embedding;
           }
@@ -120,7 +129,7 @@ class FaceEmbeddingService {
       }
 
       // Si llegamos aquí, ninguna configuración funcionó
-      console.error('[FaceEmbeddingService] ❌ No se detectaron rostros con ninguna configuración');
+      console.error('[FaceEmbeddingService] ❌ No se detectaron rostros válidos con ninguna configuración');
       
       // Como último recurso, intentar detección simple sin landmarks
       try {
@@ -144,6 +153,94 @@ class FaceEmbeddingService {
       console.error('[FaceEmbeddingService] Error crítico generando embedding facial:', error);
       return null;
     }
+  }
+
+  /**
+   * Valida la calidad de un embedding facial
+   */
+  public validateEmbeddingQuality(embedding: number[], isAlternativeConfig: boolean = false): { isValid: boolean; reason: string; qualityScore: number } {
+    if (!embedding || !Array.isArray(embedding)) {
+      return { isValid: false, reason: 'Embedding no es un array válido', qualityScore: 0 };
+    }
+
+    if (embedding.length !== 128) {
+      return { isValid: false, reason: `Dimensión incorrecta: ${embedding.length}, esperado: 128`, qualityScore: 0 };
+    }
+
+    // Verificar que no sea un embedding vacío o corrupto
+    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+    if (magnitude < 0.001) {
+      return { isValid: false, reason: 'Magnitud muy baja (posiblemente corrupto)', qualityScore: 0 };
+    }
+
+    // Verificar que no todos los valores sean iguales
+    const uniqueValues = new Set(embedding.map(v => Math.round(v * 10000))).size; // Más precisión
+    if (uniqueValues < 5) {
+      return { isValid: false, reason: 'Muy poca variabilidad en los datos', qualityScore: 0 };
+    }
+
+    // Verificar que no haya valores extremos (más permisivo)
+    const hasExtremeValues = embedding.some(val => Math.abs(val) > 50);
+    if (hasExtremeValues) {
+      return { isValid: false, reason: 'Contiene valores extremos', qualityScore: 0 };
+    }
+
+    // Calcular score de calidad mejorado
+    const variance = embedding.reduce((sum, val, _, arr) => {
+      const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+      return sum + Math.pow(val - mean, 2);
+    }, 0) / embedding.length;
+
+    // Fórmula mejorada de calidad
+    const magnitudeScore = Math.min(1.0, magnitude / 5); // Más permisivo
+    const varianceScore = Math.min(1.0, Math.sqrt(variance) / 1.5); // Más permisivo
+    const diversityScore = Math.min(1.0, uniqueValues / 50); // Basado en diversidad
+    
+    const qualityScore = (magnitudeScore * 0.4 + varianceScore * 0.4 + diversityScore * 0.2);
+
+    // Thresholds ajustados según el contexto
+    let minQuality: number;
+    if (isAlternativeConfig) {
+      minQuality = 0.05; // 5% para configuraciones alternativas (muy permisivo)
+    } else {
+      minQuality = 0.15; // 15% para configuraciones normales (más permisivo que antes)
+    }
+
+    const isValid = qualityScore >= minQuality;
+
+    return {
+      isValid,
+      reason: isValid ? 'Embedding válido' : `Calidad insuficiente: ${qualityScore.toFixed(3)} (mínimo: ${minQuality})`,
+      qualityScore
+    };
+  }
+
+  /**
+   * Calcula similitud coseno entre dos embeddings
+   */
+  public calculateCosineSimilarity(embedding1: number[], embedding2: number[]): number {
+    if (!embedding1 || !embedding2 || embedding1.length !== embedding2.length) {
+      return 0;
+    }
+
+    let dotProduct = 0;
+    let magnitude1 = 0;
+    let magnitude2 = 0;
+
+    for (let i = 0; i < embedding1.length; i++) {
+      dotProduct += embedding1[i] * embedding2[i];
+      magnitude1 += embedding1[i] * embedding1[i];
+      magnitude2 += embedding2[i] * embedding2[i];
+    }
+
+    magnitude1 = Math.sqrt(magnitude1);
+    magnitude2 = Math.sqrt(magnitude2);
+
+    if (magnitude1 === 0 || magnitude2 === 0) {
+      return 0;
+    }
+
+    return dotProduct / (magnitude1 * magnitude2);
   }
 
   /**

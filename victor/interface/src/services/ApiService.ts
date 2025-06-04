@@ -170,10 +170,10 @@ class ApiService {
       return {
         success: false,
         error: 'Error de conexión. Verifique su internet.'
-      };
+        };
     }
-  }
-
+      }
+      
   /**
    * Login con credenciales
    */
@@ -623,7 +623,7 @@ class ApiService {
           success: false,
           error: 'No se pudo obtener información del servidor'
         };
-      }
+    }
     } catch (error) {
       console.error('[ApiService] Error obteniendo info del servidor:', error);
       return {

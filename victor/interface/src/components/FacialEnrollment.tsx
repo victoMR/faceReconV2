@@ -816,6 +816,17 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
       embeddings.forEach((emb, idx) => {
         console.log(`[FacialEnrollment] Embedding ${idx + 1}: tipo="${emb.type}", data_length=${emb.data.length}, quality=${emb.quality}`);
       });
+      
+      // Preparar datos del usuario
+      const enrollmentData = {
+        userToken,
+        userData,
+        faceEmbeddings: embeddings,
+        captureDetails: images.map(img => ({
+          type: img.type,
+          timestamp: img.timestamp
+        }))
+      };
 
       const result = await ApiService.enrollFace(userToken, embeddings);
       

@@ -11,7 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===== MODELO PRINCIPAL DE USUARIOS =====
+// ===== MODELO PRINCIPAL DE USUARIOS xd =====
 model User {
   id            Int      @id @default(autoincrement())
   first_name    String   @db.VarChar(100)

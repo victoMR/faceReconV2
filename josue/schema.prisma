@@ -1,0 +1,132 @@
+// ===== FACERECON DATABASE SCHEMA =====
+// Desde la base de datos Neon existente
+// Base de datos: faceRecon
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== MODELO PRINCIPAL DE USUARIOS =====
+model User {
+  id            Int      @id @default(autoincrement())
+  first_name    String   @db.VarChar(100)
+  last_name     String   @db.VarChar(100)
+  email         String   @unique @db.VarChar(255)
+  password_hash String   @db.VarChar(255)
+  phone         String?  @db.VarChar(20)
+  id_number     String?  @unique @db.VarChar(50)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now()) @updatedAt
+
+  // ===== RELACIONES =====
+  // Un usuario puede tener múltiples sesiones de login
+  login_sessions  LoginSession[]
+  
+  // Un usuario puede tener múltiples embeddings faciales
+  face_embeddings FaceEmbedding[]
+
+  // ===== ÍNDICES =====
+  @@index([email], name: "idx_users_email")
+  @@map("users")
+}
+
+// ===== SESIONES DE LOGIN =====
+model LoginSession {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  token_hash String   @db.VarChar(255)
+  ip_address String?  // INET en PostgreSQL
+  user_agent String?
+  is_active  Boolean  @default(true)
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  // ===== RELACIONES =====
+  // Cada sesión pertenece a un usuario
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  // ===== ÍNDICES =====
+  @@index([user_id], name: "idx_login_sessions_user_id")
+  @@index([token_hash], name: "idx_login_sessions_token")
+  @@map("login_sessions")
+}
+
+// ===== EMBEDDINGS FACIALES =====
+model FaceEmbedding {
+  id             Int      @id @default(autoincrement())
+  user_id        Int
+  embedding_data String   // Almacena los datos del embedding facial
+  capture_type   CaptureType // Enum para los tipos permitidos
+  quality_score  Float?
+  created_at     DateTime @default(now())
+
+  // ===== RELACIONES =====
+  // Cada embedding pertenece a un usuario
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  // ===== ÍNDICES =====
+  @@index([user_id], name: "idx_face_embeddings_user_id")
+  @@map("face_embeddings")
+}
+
+// ===== TABLA DE PRUEBA =====
+model PlayingWithNeon {
+  id    Int   @id @default(autoincrement())
+  name  String
+  value Float
+
+  @@map("playing_with_neon")
+}
+
+// ===== ENUMS =====
+// Tipos de captura facial permitidos (basado en el CHECK constraint)
+enum CaptureType {
+  normal
+  sonrisa
+  asentir
+  subir_cabeza
+
+  @@map("capture_type")
+}
+
+// ===== NOTAS SOBRE EL SCHEMA =====
+// 
+// 1. RELACIONES PRINCIPALES:
+//    - User (1) → LoginSession (many)  
+//    - User (1) → FaceEmbedding (many)
+//
+// 2. CARACTERÍSTICAS DE SEGURIDAD:
+//    - Emails únicos en users
+//    - id_number único en users
+//    - Contraseñas hasheadas
+//    - Sesiones con expiración
+//
+// 3. SISTEMA DE RECONOCIMIENTO FACIAL:
+//    - Múltiples embeddings por usuario
+//    - Diferentes tipos de captura (normal, sonrisa, etc.)
+//    - Score de calidad para cada embedding
+//
+// 4. AUDITORÍA:
+//    - created_at en todas las tablas
+//    - updated_at donde es relevante
+//    - Tracking de IP y user agent en sesiones
+//
+// ===== COMANDOS ÚTILES =====
+//
+// Para generar el cliente de Prisma:
+// npx prisma generate
+//
+// Para sincronizar con la BD existente:
+// npx prisma db pull
+//
+// Para aplicar cambios (si se modifica el schema):
+// npx prisma db push
+//
+// Para ver la BD en el navegador:
+// npx prisma studio

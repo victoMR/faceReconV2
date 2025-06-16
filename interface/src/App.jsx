@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import Header from "./components/Header";
-import HomePage from "./components/home/home";
-import LoginPage from "./components/login/login";
+import HomePage from "./components/home/Home";
+import LoginPage from "./components/login/Login";
 import FacialLogin from "./components/login/FacialLogin";
 import PasswordLogin from "./components/login/PasswordLogin";
-import RegistrationForm from "./components/register/register";
+import RegistrationForm from "./components/register/Register";
 import FacialEnrollment from "./components/register/FacialEnrollment";
 import Dashboard from "./components/Dashboard";
 import SystemStatusAlert from "./components/SystemStatusAlert";

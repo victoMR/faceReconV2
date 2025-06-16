@@ -276,6 +276,30 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
     }
   };
 
+  // DIBUJAR LANDMARKS SOBRE EL CANVAS
+  function drawLandmarksOnCanvas(result: FaceLandmarkerResult | null, video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+    if (!result || !result.faceLandmarks || result.faceLandmarks.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // Limpiar canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Dibujar frame de video
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Configuración de puntos y líneas
+    ctx.strokeStyle = '#00e0ff';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = '#00e0ff';
+    const landmarks = result.faceLandmarks[0];
+    // Dibujar puntos
+    for (const pt of landmarks) {
+      ctx.beginPath();
+      ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 2, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    // Opcional: dibujar líneas entre landmarks clave (ejemplo: contorno)
+    // ...
+  }
+
   // Iniciar la detección facial continua
   const startFaceDetection = () => {
     if (isRunning.current) {
@@ -331,6 +355,13 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
           stableFrameCounter.current = 0;
           challengeCounter.current = 0;
           setChallengeProgress(0);
+        }
+
+        // DIBUJAR LANDMARKS EN TIEMPO REAL
+        if (overlayCanvasRef.current && videoRef.current) {
+          overlayCanvasRef.current.width = videoRef.current.videoWidth;
+          overlayCanvasRef.current.height = videoRef.current.videoHeight;
+          drawLandmarksOnCanvas(result, videoRef.current, overlayCanvasRef.current);
         }
       } catch (error) {
         console.error("[FacialEnrollment] Error en detección facial:", error);
@@ -680,38 +711,62 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
     }
   };
 
+  // --- NUEVO: función para comparar embeddings y evitar duplicados ---
+  function areEmbeddingsSimilar(emb1: number[], emb2: number[], threshold = 0.85) {
+    if (!emb1 || !emb2 || emb1.length !== emb2.length) return false;
+    // Distancia euclidiana normalizada
+    const dist = Math.sqrt(emb1.reduce((sum, v, i) => sum + Math.pow(v - emb2[i], 2), 0));
+    // Normalizar a [0,1] (embedding de 128 dims)
+    const similarity = 1 - dist / Math.sqrt(2 * emb1.length);
+    return similarity > threshold;
+  }
+
   // Capturar imagen específica (manual para normal)
   const captureImage = async (type: CaptureType) => {
     if (isCapturing || !videoRef.current || faceQuality !== "high") {
+      setErrorMessage("La calidad del rostro no es suficiente. Mejore la iluminación y posición.");
       return;
     }
-
     setIsCapturing(true);
-    console.log(`[FacialEnrollment] Capturando imagen tipo: ${type}`);
-
+    setErrorMessage("");
     try {
       const embeddingService = FaceEmbeddingService.getInstance();
-
-      // Capturar frame del video
       const canvas = embeddingService.captureVideoFrame(videoRef.current);
       const embedding = await embeddingService.generateFaceEmbedding(canvas);
-
       if (!embedding) {
-        throw new Error(
-          `No se pudo generar el embedding para la imagen ${type}`
-        );
+        throw new Error(`No se pudo generar el embedding para la imagen ${type}`);
       }
-
-      // Obtener los datos de la imagen como base64
-      const imageData = canvas.toDataURL("image/jpeg", 0.8);
-
+      // Validar calidad del embedding
+      const validation = embeddingService.validateEmbeddingQuality(embedding);
+      if (!validation.isValid || validation.qualityScore < 0.7) {
+        setErrorMessage("La calidad del embedding es baja. Mejore la iluminación, mire de frente y evite obstrucciones.");
+        setIsCapturing(false);
+        return;
+      }
+      // Evitar duplicados: comparar con capturas previas
+      for (const img of capturedImages) {
+        if (areEmbeddingsSimilar(img.embedding, embedding, 0.92)) {
+          setErrorMessage("La captura es muy similar a una anterior. Cambie de expresión o pose.");
+          setIsCapturing(false);
+          return;
+        }
+      }
+      // Crear imagen con landmarks
+      let imageData = "";
+      if (overlayCanvasRef.current && videoRef.current) {
+        // Dibujar landmarks sobre el frame actual
+        const result = MediaPipeService.getInstance().detectFaceInVideo(videoRef.current, performance.now());
+        drawLandmarksOnCanvas(result, videoRef.current, overlayCanvasRef.current);
+        imageData = overlayCanvasRef.current.toDataURL("image/jpeg", 0.8);
+      } else {
+        imageData = canvas.toDataURL("image/jpeg", 0.8);
+      }
       const capturedImage: CapturedImage = {
         type,
         embedding,
         imageData,
         timestamp: new Date().toISOString(),
       };
-
       setCapturedImages((prev) => [...prev, capturedImage]);
       console.log(`[FacialEnrollment] Imagen ${type} capturada exitosamente`);
 
@@ -742,14 +797,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         await sendEnrollmentData([...capturedImages, capturedImage]);
       }
     } catch (error) {
-      console.error(
-        `[FacialEnrollment] Error capturando imagen ${type}:`,
-        error
-      );
-      setStatus("error_registro");
-      setErrorMessage(
-        `Error al capturar la imagen ${type}. Intente nuevamente.`
-      );
+      setErrorMessage(`Error al capturar la imagen: ${error.message}`);
     } finally {
       setIsCapturing(false);
     }
@@ -757,194 +805,76 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
 
   // Captura automática para desafíos
   const automaticCapture = async (type: CaptureType) => {
-    // 🚨 VERIFICACIÓN CRÍTICA: MÁXIMO 4 CAPTURAS
-    if (capturedImagesRef.current.length >= 4) {
-      console.log(
-        `[FacialEnrollment] 🛑 MÁXIMO DE CAPTURAS ALCANZADO: ${capturedImagesRef.current.length}/4 - DETENIENDO SISTEMA`
-      );
-      // DETENER TODO INMEDIATAMENTE
-      isRunning.current = false;
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-      setStatus("procesando_imagenes");
-      return;
-    }
-
-    // 🚨 VERIFICACIÓN ADICIONAL CON ESTADO
-    if (capturedImages.length >= 4) {
-      console.log(
-        `[FacialEnrollment] 🛑 MÁXIMO DE CAPTURAS ALCANZADO (STATE): ${capturedImages.length}/4 - DETENIENDO SISTEMA`
-      );
-      // DETENER TODO INMEDIATAMENTE
-      isRunning.current = false;
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-      setStatus("procesando_imagenes");
-      return;
-    }
-
-    // VERIFICACIÓN MÚLTIPLE PARA EVITAR CAPTURAS DUPLICADAS
-    if (
-      isCapturing ||
-      !videoRef.current ||
-      captureInProgress.current.has(type)
-    ) {
-      console.log(
-        `[FacialEnrollment] ⚠️ Captura bloqueada - isCapturing: ${isCapturing}, captureInProgress: ${captureInProgress.current.has(
-          type
-        )}`
-      );
-      return;
-    }
-
-    // Verificar si ya tenemos una imagen de este tipo
-    const existingImageOfType = capturedImages.find((img) => img.type === type);
-    if (existingImageOfType) {
-      console.log(
-        `[FacialEnrollment] Ya existe imagen de tipo ${type}, ignorando captura múltiple`
-      );
-      return;
-    }
-
-    // VERIFICACIÓN ADICIONAL CON REF (estado más actual)
-    const existingImageOfTypeRef = capturedImagesRef.current.find(
-      (img) => img.type === type
-    );
-    if (existingImageOfTypeRef) {
-      console.log(
-        `[FacialEnrollment] 🚫 Ya existe imagen de tipo ${type}, ignorando captura múltiple (REF)`
-      );
-      return;
-    }
-
-    // VERIFICACIÓN ADICIONAL CON ESTADO (doble seguridad)
-    const existingImageOfTypeState = capturedImages.find(
-      (img) => img.type === type
-    );
-    if (existingImageOfTypeState) {
-      console.log(
-        `[FacialEnrollment] 🚫 Ya existe imagen de tipo ${type}, ignorando captura múltiple (STATE)`
-      );
-      return;
-    }
-
-    // DETENER INMEDIATAMENTE EL BUCLE DE DETECCIÓN PARA ESTE TIPO
-    captureInProgress.current.add(type);
+    if (isCapturing || !videoRef.current) return;
     setIsCapturing(true);
-
-    console.log(
-      `[FacialEnrollment] 🎯 INICIANDO captura automática tipo: ${type} (Total actual: ${capturedImagesRef.current.length})`
-    );
-
+    setErrorMessage("");
     try {
       const embeddingService = FaceEmbeddingService.getInstance();
-
-      // Capturar frame del video con configuración optimizada para Canvas2D
       const canvas = embeddingService.captureVideoFrame(videoRef.current!);
-      // Optimización para Canvas2D cuando se realizan múltiples operaciones getImageData
-      try {
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-      } catch (e) {
-        // Fallback si willReadFrequently no es soportado
-        canvas.getContext("2d");
-      }
-
       const embedding = await embeddingService.generateFaceEmbedding(canvas);
-
-      if (!embedding) {
-        throw new Error(
-          `No se pudo generar el embedding para la imagen ${type}`
-        );
+      if (!embedding) throw new Error(`No se pudo generar el embedding para la imagen ${type}`);
+      // Validar calidad del embedding
+      const validation = embeddingService.validateEmbeddingQuality(embedding);
+      if (!validation.isValid || validation.qualityScore < 0.7) {
+        setErrorMessage("La calidad del embedding es baja. Mejore la iluminación, mire de frente y evite obstrucciones.");
+        setIsCapturing(false);
+        return;
       }
-
-      // Obtener los datos de la imagen como base64
-      const imageData = canvas.toDataURL("image/jpeg", 0.8);
-
+      // Evitar duplicados
+      for (const img of capturedImages) {
+        if (areEmbeddingsSimilar(img.embedding, embedding, 0.92)) {
+          setErrorMessage("La captura es muy similar a una anterior. Cambie de expresión o pose.");
+          setIsCapturing(false);
+          return;
+        }
+      }
+      // Crear imagen con landmarks
+      let imageData = "";
+      if (overlayCanvasRef.current && videoRef.current) {
+        const result = MediaPipeService.getInstance().detectFaceInVideo(videoRef.current, performance.now());
+        drawLandmarksOnCanvas(result, videoRef.current, overlayCanvasRef.current);
+        imageData = overlayCanvasRef.current.toDataURL("image/jpeg", 0.8);
+      } else {
+        imageData = canvas.toDataURL("image/jpeg", 0.8);
+      }
       const capturedImage: CapturedImage = {
         type,
         embedding,
         imageData,
         timestamp: new Date().toISOString(),
       };
-
-      // ACTUALIZAR ESTADO Y REF INMEDIATAMENTE
       setCapturedImages((prevImages) => {
         const updatedImages = [...prevImages, capturedImage];
-
-        // Actualizar REF inmediatamente para evitar capturas duplicadas
         capturedImagesRef.current = updatedImages;
-
-        console.log(
-          `[FacialEnrollment] 🎉 Imagen ${type} capturada exitosamente. Total: ${updatedImages.length}/4`
-        );
-
-        // TRANSICIÓN DE ESTADO INMEDIATA
-        setTimeout(() => {
-          if (type === "sonrisa" && updatedImages.length === 2) {
-            console.log(
-              "[FacialEnrollment] 🔄 Transicionando a captura de asentimiento..."
-            );
-            setStatus("esperando_asentir_automatico");
-            setCurrentCaptureType("asentir");
-            challengeCounter.current = 0;
-            setChallengeProgress(0);
-            nosePositionHistory.current = [];
-            shouldCaptureAfterNod.current = false;
-            postNodCaptureCounter.current = 0;
-          } else if (type === "asentir" && updatedImages.length === 3) {
-            console.log(
-              "[FacialEnrollment] 🔄 Transicionando a captura de subir cabeza..."
-            );
-            setStatus("esperando_subir_cabeza_automatico");
-            setCurrentCaptureType("subir_cabeza");
-            challengeCounter.current = 0;
-            setChallengeProgress(0);
-            nosePositionHistory.current = [];
-            shouldCaptureAfterNod.current = false;
-            postNodCaptureCounter.current = 0;
-          } else if (type === "subir_cabeza" && updatedImages.length === 4) {
-            console.log(
-              "[FacialEnrollment] 🎯 TODAS las capturas completadas, procesando..."
-            );
-            setStatus("procesando_imagenes");
-
-            // DETENER TODA DETECCIÓN INMEDIATAMENTE
-            isRunning.current = false;
-            if (animationRef.current) {
-              cancelAnimationFrame(animationRef.current);
-              animationRef.current = null;
-            }
-
-            // Pequeña pausa para mostrar el estado de procesamiento
-            setTimeout(async () => {
-              await sendEnrollmentData(updatedImages);
-            }, 1000);
-          }
-        }, 50); // Reducido a 50ms para mayor velocidad
-
         return updatedImages;
       });
+      // Determinar siguiente estado automáticamente
+      setTimeout(() => {
+        if (type === "sonrisa" && capturedImages.length === 2) {
+          setStatus("esperando_asentir_automatico");
+          setCurrentCaptureType("asentir");
+        } else if (type === "asentir" && capturedImages.length === 3) {
+          setStatus("esperando_subir_cabeza_automatico");
+          setCurrentCaptureType("subir_cabeza");
+        } else if (type === "subir_cabeza" && capturedImages.length === 4) {
+          setStatus("procesando_imagenes");
+          // DETENER TODA DETECCIÓN INMEDIATAMENTE
+          isRunning.current = false;
+          if (animationRef.current) {
+            cancelAnimationFrame(animationRef.current);
+            animationRef.current = null;
+          }
+          // Pequeña pausa para mostrar el estado de procesamiento
+          setTimeout(async () => {
+            await sendEnrollmentData(capturedImages);
+          }, 1000);
+        }
+      }, 50); // Reducido a 50ms para mayor velocidad
     } catch (error) {
-      console.error(
-        `[FacialEnrollment] ❌ Error en captura automática ${type}:`,
-        error
-      );
-      setStatus("error_registro");
-      setErrorMessage(
-        `Error al capturar la imagen ${type}. Intente nuevamente.`
-      );
+      setErrorMessage(`Error al capturar la imagen: ${error.message}`);
     } finally {
       setIsCapturing(false);
-      captureInProgress.current.delete(type); // Limpiar flag al finalizar
-      console.log(
-        `[FacialEnrollment] ✅ Finalizando captura ${type}, captureInProgress: ${Array.from(
-          captureInProgress.current
-        )}`
-      );
+      captureInProgress.current.delete(type);
     }
   };
 
@@ -1159,8 +1089,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
-        className="rounded-xl p-4 shadow-lg"
-        style={{ backgroundColor: config.backgroundColor }}
+        className="rounded-2xl p-5 shadow-lg border border-blue-100 bg-white flex items-center justify-center"
       >
         <div className="flex items-center justify-center space-x-3 text-white">
           {config.icon}
@@ -1188,96 +1117,71 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
   };
 
   return (
-    <div className="facial-enrollment max-w-4xl mx-auto p-4">
-      {/* Header moderno */}
+    <div className="facial-enrollment max-w-3xl mx-auto p-4">
+      {/* Header moderno con fondo degradado y sombra */}
       <div
-        className="rounded-xl p-6 mb-6 shadow-xl"
+        className="rounded-3xl p-8 mb-8 shadow-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-blue-100"
         style={{
-          background: "linear-gradient(135deg, #3e5866 0%, #54a8a0 100%)",
+          background: "linear-gradient(135deg, #e0f2fe 0%, #f8fafc 100%)",
+          boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.10)"
         }}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <div className="bg-white bg-opacity-20 p-3 rounded-xl">
-              <FaCamera className="w-8 h-8 text-white" />
+            <div className="bg-blue-100 p-4 rounded-2xl shadow-md">
+              <FaCamera className="w-10 h-10 text-blue-500" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">
-                Registro Biométrico
-              </h2>
-              <p className="text-gray-200">
-                4 capturas específicas para máxima seguridad
-              </p>
+              <h2 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">Registro Biométrico</h2>
+              <p className="text-blue-700 text-lg mt-1">4 capturas específicas para máxima seguridad</p>
             </div>
           </div>
-
           {/* Progreso de capturas */}
           <div className="flex space-x-2">
-            {["normal", "sonrisa", "asentir", "subir_cabeza"].map(
-              (type, index) => (
-                <div
-                  key={type}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    capturedImages.some((img) => img.type === type)
-                      ? "bg-green-400"
-                      : currentCaptureType === type
-                      ? "animate-pulse"
-                      : "bg-gray-400"
-                  }`}
-                  style={{
-                    backgroundColor: capturedImages.some(
-                      (img) => img.type === type
-                    )
-                      ? "#cbe552"
-                      : currentCaptureType === type
-                      ? "#95b54c"
-                      : "#ffffff80",
-                  }}
-                />
-              )
-            )}
+            {["normal", "sonrisa", "asentir", "subir_cabeza"].map((type, index) => (
+              <div
+                key={type}
+                className={`w-4 h-4 rounded-full transition-all duration-300 shadow-md ${
+                  capturedImages.some((img) => img.type === type)
+                    ? "bg-green-400 border-2 border-green-600"
+                    : currentCaptureType === type
+                    ? "bg-blue-400 animate-pulse border-2 border-blue-600"
+                    : "bg-gray-200 border border-gray-300"
+                }`}
+              />
+            ))}
           </div>
         </div>
       </div>
 
       {/* Indicador de estado */}
-      <div className="mb-6">{renderStatusIndicator()}</div>
+      <div className="mb-8">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="rounded-2xl p-5 shadow-lg border border-blue-100 bg-white flex items-center justify-center"
+        >
+          {renderStatusIndicator()}
+        </motion.div>
+      </div>
 
-      {/* Área de video */}
-      <div className="relative mb-6">
-        <div className="relative bg-gray-900 rounded-xl overflow-hidden shadow-lg">
+      {/* Área de video mejorada */}
+      <div className="relative mb-8 flex justify-center">
+        <div className="relative rounded-3xl overflow-hidden shadow-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-100 via-white to-blue-200" style={{width: 420, height: 320}}>
           <video
             ref={videoRef}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover rounded-3xl"
             autoPlay
             muted
             playsInline
-            style={{ aspectRatio: "16/9" }}
+            style={{ aspectRatio: "4/3", background: '#e0e7ef' }}
           />
-
-          {/* Overlay de detección facial */}
-          <AnimatePresence>
-            {faceDetected && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                className="absolute inset-0 flex items-center justify-center pointer-events-none"
-              >
-                <div
-                  className={`border-4 rounded-lg transition-all duration-300 ${
-                    faceQuality === "high"
-                      ? "border-green-400 shadow-lg shadow-green-400/30"
-                      : faceQuality === "medium"
-                      ? "border-yellow-400 shadow-lg shadow-yellow-400/30"
-                      : "border-red-400 shadow-lg shadow-red-400/30"
-                  }`}
-                  style={{ width: "320px", height: "240px" }}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
+          <canvas
+            ref={overlayCanvasRef}
+            className="absolute inset-0 w-full h-full pointer-events-none rounded-3xl"
+            style={{ zIndex: 10 }}
+          />
           {/* Indicador de calidad facial */}
           <div className="absolute top-4 left-4">
             <AnimatePresence>
@@ -1286,7 +1190,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold backdrop-blur-md border ${
+                  className={`px-4 py-2 rounded-xl text-base font-semibold shadow border-2 ${
                     faceQuality === "high"
                       ? "bg-green-500/90 text-white border-green-400"
                       : faceQuality === "medium"
@@ -1294,12 +1198,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
                       : "bg-red-500/90 text-white border-red-400"
                   }`}
                 >
-                  Calidad:{" "}
-                  {faceQuality === "high"
-                    ? "Excelente"
-                    : faceQuality === "medium"
-                    ? "Media"
-                    : "Baja"}
+                  Calidad: {faceQuality === "high" ? "Excelente" : faceQuality === "medium" ? "Media" : "Baja"}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1307,7 +1206,7 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         </div>
       </div>
 
-      {/* Instrucciones y botones de captura */}
+      {/* Instrucciones y botones de captura mejorados */}
       <AnimatePresence>
         {[
           "esperando_captura_normal",
@@ -1319,61 +1218,48 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6"
+            className="bg-white rounded-2xl shadow-lg border border-blue-100 p-8 mb-8 flex flex-col items-center"
           >
             {(() => {
               const config = getCaptureConfig(currentCaptureType);
               return (
                 <div className="text-center">
-                  <div
-                    className={`bg-${config.color}-100 text-${config.color}-700 p-4 rounded-xl mb-4 inline-block`}
-                  >
-                    {config.icon}
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {config.title}
-                  </h3>
-                  <p className="text-gray-600 mb-6">{config.instruction}</p>
-
+                  <div className={`mx-auto mb-4 flex items-center justify-center w-14 h-14 rounded-full bg-${config.color}-100 shadow-lg`}>{config.icon}</div>
+                  <h3 className="text-2xl font-bold text-blue-900 mb-2 drop-shadow-sm">{config.title}</h3>
+                  <p className="text-blue-700 text-lg mb-6">{config.instruction}</p>
                   {/* Solo mostrar botón para captura normal (manual) */}
                   {!config.isAutomatic && (
                     <button
                       onClick={() => captureImage(currentCaptureType)}
                       disabled={isCapturing || faceQuality !== "high"}
-                      className={`px-8 py-3 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2 mx-auto ${
-                        faceQuality === "high" && !isCapturing
-                          ? `bg-${config.color}-600 hover:bg-${config.color}-700 text-white shadow-lg hover:shadow-xl`
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
+                      className={`bg-gradient-to-br from-blue-700 to-teal-500 text-white font-semibold rounded-xl shadow-lg hover:from-blue-800 hover:to-teal-600 transition-all duration-200 px-10 py-3 flex items-center justify-center space-x-2 mx-auto w-full disabled:opacity-50 disabled:cursor-not-allowed ${isCapturing || faceQuality !== "high" ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {isCapturing ? (
                         <>
-                          <FaSyncAlt className="w-4 h-4 animate-spin" />
+                          <FaSyncAlt className="w-5 h-5 animate-spin" />
                           <span>Capturando...</span>
                         </>
                       ) : (
                         <>
-                          <FaCamera className="w-4 h-4" />
+                          <FaCamera className="w-5 h-5" />
                           <span>Capturar Imagen</span>
                         </>
                       )}
                     </button>
                   )}
-
                   {/* Mostrar progreso para capturas automáticas */}
                   {config.isAutomatic && (
-                    <div className="max-w-md mx-auto">
-                      <div className="bg-gray-200 rounded-full h-3 overflow-hidden mb-3">
+                    <div className="max-w-md mx-auto mt-4">
+                      <div className="bg-gray-200 rounded-full h-4 overflow-hidden mb-3">
                         <motion.div
-                          className={`bg-${config.color}-600 h-3 rounded-full`}
+                          className={`bg-${config.color}-600 h-4 rounded-full`}
                           initial={{ width: 0 }}
                           animate={{ width: `${challengeProgress}%` }}
                           transition={{ duration: 0.3 }}
                         />
                       </div>
-                      <p className="text-sm text-gray-600">
-                        {Math.round(challengeProgress)}% -{" "}
-                        {currentCaptureType === "sonrisa"
+                      <p className="text-base text-blue-700">
+                        {Math.round(challengeProgress)}% - {currentCaptureType === "sonrisa"
                           ? "Mantenga la sonrisa natural"
                           : currentCaptureType === "asentir"
                           ? "Mueva la cabeza arriba y abajo"
@@ -1381,17 +1267,16 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
                       </p>
                       {isCapturing && (
                         <div className="flex items-center justify-center mt-3 text-green-600">
-                          <FaSyncAlt className="w-4 h-4 animate-spin mr-2" />
-                          <span className="text-sm font-medium">
+                          <FaSyncAlt className="w-5 h-5 animate-spin mr-2" />
+                          <span className="text-base font-medium">
                             Capturando imagen automáticamente...
                           </span>
                         </div>
                       )}
                     </div>
                   )}
-
                   {faceQuality !== "high" && (
-                    <p className="text-sm text-orange-600 mt-2">
+                    <p className="text-base text-orange-600 mt-2 font-semibold">
                       {!faceDetected
                         ? "Posiciónese frente a la cámara"
                         : "Ajuste su posición para mejorar la calidad de detección"}
@@ -1404,28 +1289,42 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Lista de imágenes capturadas */}
+      {/* Consejos de captura mejorados */}
+      <div className="mb-8">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-blue-900 text-base shadow">
+          <strong className="block mb-2 text-lg">Consejos para una captura exitosa:</strong>
+          <ul className="list-disc ml-7 mt-1 space-y-1">
+            <li>Buena iluminación (evita contraluces y sombras fuertes).</li>
+            <li>Rostro centrado y mirando de frente.</li>
+            <li>No uses gafas oscuras, mascarillas ni cubras tu cara.</li>
+            <li>Cambia de expresión o pose en cada captura.</li>
+            <li>Evita fondos muy brillantes o con muchas personas.</li>
+          </ul>
+        </div>
+        {errorMessage && (
+          <div className="mt-4 bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-base shadow">
+            {errorMessage}
+          </div>
+        )}
+      </div>
+
+      {/* Lista de imágenes capturadas mejorada */}
       {capturedImages.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6"
+          className="bg-white rounded-2xl shadow-lg border border-blue-100 p-8 mb-8"
         >
-          <h4 className="text-lg font-semibold text-gray-900 mb-4">
-            Imágenes Capturadas
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <h4 className="text-2xl font-bold text-blue-900 mb-6">Imágenes Capturadas</h4>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {capturedImages.map((image, index) => {
               const config = getCaptureConfig(image.type);
               return (
-                <div key={index} className="text-center">
-                  <div
-                    className={`bg-${config.color}-100 text-${config.color}-700 p-3 rounded-lg mb-2 inline-block`}
-                  >
-                    {config.icon}
-                  </div>
-                  <h5 className="font-medium text-gray-900">{config.title}</h5>
-                  <p className="text-sm text-gray-500">Capturada ✓</p>
+                <div key={index} className="text-center flex flex-col items-center">
+                  <img src={image.imageData} alt={config.title} className="rounded-xl border-2 border-blue-200 shadow mb-2 w-32 h-32 object-cover bg-gray-100" />
+                  <div className={`bg-${config.color}-100 text-${config.color}-700 p-2 rounded-lg mb-1 inline-block`}>{config.icon}</div>
+                  <h5 className="font-semibold text-blue-900">{config.title}</h5>
+                  <p className="text-sm text-blue-700">Capturada ✓</p>
                 </div>
               );
             })}
@@ -1440,19 +1339,17 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-red-50 border border-red-200 rounded-xl p-6"
+            className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-8 shadow"
           >
             <div className="flex items-center">
-              <FaExclamationTriangle className="w-5 h-5 text-red-600 mr-3" />
+              <FaExclamationTriangle className="w-6 h-6 text-red-600 mr-3" />
               <div className="flex-1">
-                <h3 className="text-red-800 font-medium">
-                  Error en el registro
-                </h3>
-                <p className="text-red-700 text-sm mt-1">{errorMessage}</p>
+                <h3 className="text-red-800 font-bold text-lg">Error en el registro</h3>
+                <p className="text-red-700 text-base mt-1">{errorMessage}</p>
               </div>
               <button
                 onClick={handleRetry}
-                className="ml-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                className="bg-gradient-to-br from-red-600 to-red-400 text-white font-semibold rounded-xl shadow hover:from-red-700 hover:to-red-500 transition-all duration-200 px-6 py-2 flex items-center justify-center ml-4"
               >
                 Reintentar
               </button>
@@ -1468,17 +1365,14 @@ const FacialEnrollment: React.FC<FacialEnrollmentProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-green-50 border border-green-200 rounded-xl p-6"
+            className="bg-green-50 border border-green-200 rounded-2xl p-6 mb-8 shadow"
           >
             <div className="flex items-center">
-              <FaCheck className="w-5 h-5 text-green-600 mr-3" />
+              <FaCheck className="w-6 h-6 text-green-600 mr-3" />
               <div>
-                <h3 className="text-green-800 font-medium">
-                  Registro completado exitosamente
-                </h3>
-                <p className="text-green-700 text-sm mt-1">
-                  Su perfil biométrico ha sido configurado correctamente con las
-                  4 capturas específicas
+                <h3 className="text-green-800 font-bold text-lg">Registro completado exitosamente</h3>
+                <p className="text-green-700 text-base mt-1">
+                  Su perfil biométrico ha sido configurado correctamente con las 4 capturas específicas
                 </p>
               </div>
             </div>

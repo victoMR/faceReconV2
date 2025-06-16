@@ -685,10 +685,8 @@ class FacialAuthModel {
   // Método para login facial
   static async faceLogin(req, res) {
     const client = await pool.connect();
-
     try {
       const { embedding } = req.body;
-
       if (!embedding || !Array.isArray(embedding)) {
         await this.logLoginAttempt(
           "facial-login",
@@ -702,7 +700,6 @@ class FacialAuthModel {
           error: "Embedding facial requerido",
         });
       }
-
       // Validar calidad del embedding de entrada
       const embeddingValidation = this.validateEmbeddingQuality(embedding);
       if (!embeddingValidation.isValid) {
@@ -722,11 +719,9 @@ class FacialAuthModel {
             "La calidad del embedding facial es insuficiente. Intente con mejor iluminación.",
         });
       }
-
       console.log(
         `[Backend] Embedding válido recibido con ${embedding.length} dimensiones`
       );
-
       // Obtener todos los embeddings de usuarios activos
       const embeddingsResult = await client.query(`
         SELECT fe.*, u.id as user_id, u.first_name, u.last_name, u.email, fe.capture_type, fe.quality_score
@@ -735,7 +730,6 @@ class FacialAuthModel {
         WHERE u.is_active = true
         ORDER BY fe.quality_score DESC
       `);
-
       if (embeddingsResult.rows.length === 0) {
         await this.logLoginAttempt(
           "facial-login",
@@ -749,152 +743,116 @@ class FacialAuthModel {
           error: "No hay usuarios registrados con datos biométricos",
         });
       }
-
-      console.log(
-        `[Backend] Comparando con ${embeddingsResult.rows.length} embeddings almacenados...`
-      );
-
-      let bestMatch = null;
-      let bestSimilarity = 0;
-      let bestMatchDetails = null;
-
-      // Comparar con todos los embeddings almacenados
-      for (const storedEmbedding of embeddingsResult.rows) {
-        try {
-          const storedData = JSON.parse(storedEmbedding.embedding_data);
-
-          // Validar embedding almacenado
-          const storedValidation = this.validateEmbeddingQuality(storedData);
-          if (!storedValidation.isValid) {
-            console.warn(
-              `[Backend] Embedding almacenado inválido para usuario ${storedEmbedding.user_id}: ${storedValidation.reason}`
-            );
-            continue;
+      // Agrupar embeddings por usuario
+      const userEmbeddingsMap = {};
+      for (const row of embeddingsResult.rows) {
+        if (!userEmbeddingsMap[row.user_id]) {
+          userEmbeddingsMap[row.user_id] = {
+            user: {
+              id: row.user_id,
+              firstName: row.first_name,
+              lastName: row.last_name,
+              email: row.email,
+            },
+            embeddings: [],
+          };
+        }
+        userEmbeddingsMap[row.user_id].embeddings.push(row);
+      }
+      // Para cada usuario, contar cuántos embeddings superan el umbral
+      let bestUser = null;
+      let bestUserMatchCount = 0;
+      let bestUserAvgSimilarity = 0;
+      let bestUserMaxSimilarity = 0;
+      let bestUserEmbeddingDetails = null;
+      for (const userId in userEmbeddingsMap) {
+        const { user, embeddings } = userEmbeddingsMap[userId];
+        let matchCount = 0;
+        let similaritySum = 0;
+        let maxSimilarity = 0;
+        let bestEmbedding = null;
+        for (const storedEmbedding of embeddings) {
+          try {
+            const storedData = JSON.parse(storedEmbedding.embedding_data);
+            const storedValidation = this.validateEmbeddingQuality(storedData);
+            if (!storedValidation.isValid) continue;
+            const similarity = this.calculateFacialSimilarity(embedding, storedData);
+            if (similarity > maxSimilarity) {
+              maxSimilarity = similarity;
+              bestEmbedding = storedEmbedding;
+            }
+            if (similarity >= SIMILARITY_THRESHOLD) {
+              matchCount++;
+              similaritySum += similarity;
+            }
+          } catch (e) { continue; }
+        }
+        if (matchCount >= 2) { // Requiere al menos 2 coincidencias fuertes
+          const avgSimilarity = similaritySum / matchCount;
+          // Elegir el usuario con más coincidencias y mejor similitud promedio
+          if (
+            matchCount > bestUserMatchCount ||
+            (matchCount === bestUserMatchCount && avgSimilarity > bestUserAvgSimilarity)
+          ) {
+            bestUser = user;
+            bestUserMatchCount = matchCount;
+            bestUserAvgSimilarity = avgSimilarity;
+            bestUserMaxSimilarity = maxSimilarity;
+            bestUserEmbeddingDetails = bestEmbedding;
           }
-
-          // Calcular similitud usando el nuevo sistema
-          const similarity = this.calculateFacialSimilarity(
-            embedding,
-            storedData
-          );
-
-          console.log(
-            `[Backend] Usuario ${storedEmbedding.email} (${
-              storedEmbedding.capture_type
-            }): Similitud=${similarity.toFixed(4)}`
-          );
-
-          if (similarity > bestSimilarity) {
-            bestSimilarity = similarity;
-            bestMatch = storedEmbedding;
-            bestMatchDetails = {
-              similarity: similarity,
-              captureType: storedEmbedding.capture_type,
-              qualityScore: storedEmbedding.quality_score,
-              userId: storedEmbedding.user_id,
-              email: storedEmbedding.email,
-            };
-          }
-        } catch (parseError) {
-          console.error(
-            `[Backend] Error parseando embedding para usuario ${storedEmbedding.user_id}:`,
-            parseError
-          );
-          continue;
         }
       }
-
-      // Verificar si se encontró una coincidencia válida
-      if (!bestMatch || bestSimilarity < SIMILARITY_THRESHOLD) {
-        const message = bestMatch
-          ? `Rostro no reconocido con suficiente confianza (similitud: ${bestSimilarity.toFixed(
-              3
-            )}, requerida: ${SIMILARITY_THRESHOLD})`
-          : "No se encontraron coincidencias faciales";
-
-        console.log(`[Backend] ❌ Login facial fallido: ${message}`);
+      if (!bestUser) {
+        const debug = { threshold: SIMILARITY_THRESHOLD, minMatches: 2 };
         await this.logLoginAttempt(
           "facial-login",
           req.ip,
           req.get("User-Agent"),
           false,
-          message
+          "No se encontraron coincidencias faciales suficientes"
         );
-
         return res.status(401).json({
           success: false,
           error:
             "Rostro no reconocido. Intente nuevamente con mejor iluminación o registre su rostro.",
-          debug: {
-            bestSimilarity: bestSimilarity.toFixed(3),
-            threshold: SIMILARITY_THRESHOLD,
-            candidatesEvaluated: embeddingsResult.rows.length,
-          },
+          debug,
         });
       }
-
-      // Determinar nivel de confianza
-      const confidenceLevel =
-        bestSimilarity >= MIN_CONFIDENCE_THRESHOLD ? "high" : "medium";
-
-      console.log(
-        `[Backend] ✅ Match encontrado - Usuario: ${
-          bestMatchDetails.email
-        }, Similitud: ${bestSimilarity.toFixed(
-          4
-        )}, Confianza: ${confidenceLevel}`
-      );
-
       // Generar token para el usuario reconocido
       const token = this.generateToken({
-        id: bestMatch.user_id,
-        email: bestMatch.email,
-        first_name: bestMatch.first_name,
-        last_name: bestMatch.last_name,
+        id: bestUser.id,
+        email: bestUser.email,
+        first_name: bestUser.firstName,
+        last_name: bestUser.lastName,
       });
-
       // Crear sesión activa
       const tokenHash = bcrypt.hashSync(token, 10);
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
       await client.query(
         `
-        INSERT INTO login_sessions (user_id, token_hash, ip_address, user_agent, expires_at)
-        VALUES ($1, $2, $3, $4, $5)
-        `,
-        [bestMatch.user_id, tokenHash, req.ip, req.get("User-Agent"), expiresAt]
+      INSERT INTO login_sessions (user_id, token_hash, ip_address, user_agent, expires_at)
+      VALUES ($1, $2, $3, $4, $5)
+      `,
+        [bestUser.id, tokenHash, req.ip, req.get("User-Agent"), expiresAt]
       );
-
-      // Log del login facial exitoso con detalles
       await this.logLoginAttempt(
-        bestMatch.email,
+        bestUser.email,
         req.ip,
         req.get("User-Agent"),
         true,
-        `Login facial exitoso - Similitud: ${bestSimilarity.toFixed(
-          3
-        )}, Confianza: ${confidenceLevel}`
+        `Login facial exitoso - ${bestUserMatchCount} coincidencias, Similitud promedio: ${bestUserAvgSimilarity.toFixed(3)}`
       );
-
-      console.log(
-        `[Backend] ✅ Login facial completado exitosamente para ${bestMatch.email}`
-      );
-
       res.json({
         success: true,
         message: "Login facial exitoso",
         userToken: token,
-        user: {
-          id: bestMatch.user_id,
-          firstName: bestMatch.first_name,
-          lastName: bestMatch.last_name,
-          email: bestMatch.email,
-        },
+        user: bestUser,
         authentication: {
           method: "facial",
-          similarity: Number.parseFloat(bestSimilarity.toFixed(3)),
-          confidence: confidenceLevel,
-          captureType: bestMatchDetails.captureType,
+          similarity: Number.parseFloat(bestUserAvgSimilarity.toFixed(3)),
+          maxSimilarity: Number.parseFloat(bestUserMaxSimilarity.toFixed(3)),
+          matches: bestUserMatchCount,
+          threshold: SIMILARITY_THRESHOLD,
           timestamp: new Date().toISOString(),
         },
       });
@@ -907,7 +865,6 @@ class FacialAuthModel {
         false,
         "Error interno del servidor"
       );
-
       res.status(500).json({
         success: false,
         error: "Error interno del servidor durante la autenticación facial",

@@ -45,65 +45,38 @@ export default function LoginPage({ onModeChange }: LoginPageProps) {
         </div>
 
         <div className="space-y-4">
+          {/* Botones principales de selección de método de login */}
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => onModeChange("login-facial")}
-            className="w-full p-6 rounded-xl border-2 transition-all duration-200 hover:shadow-lg"
-            style={{
-              borderColor: "#54a8a0",
-              backgroundColor: "#f0f8f7",
-            }}
+            className="bg-white/80 border border-blue-200 text-blue-900 font-semibold rounded-2xl shadow-md hover:bg-blue-50 transition-all duration-200 px-8 py-5 flex items-center justify-center space-x-4 w-full mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100"
           >
-            <div className="flex items-center space-x-4">
-              <div
-                className="p-3 rounded-xl"
-                style={{ backgroundColor: "#54a8a0" }}
-              >
-                <FaCamera className="w-6 h-6 text-white" />
-              </div>
-              <div className="text-left">
-                <h3
-                  className="font-semibold text-lg"
-                  style={{ color: "#3e5866" }}
-                >
-                  Reconocimiento Facial
-                </h3>
-                <p className="text-gray-600 text-sm">
-                  Autenticación biométrica avanzada con detección de vida
-                </p>
-              </div>
+            <div className="p-3 rounded-xl bg-blue-100">
+              <FaCamera className="w-6 h-6 text-blue-700" />
+            </div>
+            <div className="text-left">
+              <h3 className="font-semibold text-lg">Reconocimiento Facial</h3>
+              <p className="text-gray-500 text-sm">
+                Autenticación biométrica avanzada con detección de vida
+              </p>
             </div>
           </motion.button>
 
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => onModeChange("login-password")}
-            className="w-full p-6 rounded-xl border-2 transition-all duration-200 hover:shadow-lg"
-            style={{
-              borderColor: "#95b54c",
-              backgroundColor: "#f7f9f2",
-            }}
+            className="bg-white/80 border border-gray-200 text-gray-900 font-semibold rounded-2xl shadow-md hover:bg-gray-50 transition-all duration-200 px-8 py-5 flex items-center justify-center space-x-4 w-full focus:outline-none focus:ring-4 focus:ring-gray-100"
           >
-            <div className="flex items-center space-x-4">
-              <div
-                className="p-3 rounded-xl"
-                style={{ backgroundColor: "#95b54c" }}
-              >
-                <FaLock className="w-6 h-6 text-white" />
-              </div>
-              <div className="text-left">
-                <h3
-                  className="font-semibold text-lg"
-                  style={{ color: "#3e5866" }}
-                >
-                  Contraseña
-                </h3>
-                <p className="text-gray-600 text-sm">
-                  Método tradicional con email y contraseña
-                </p>
-              </div>
+            <div className="p-3 rounded-xl bg-gray-100">
+              <FaLock className="w-6 h-6 text-gray-700" />
+            </div>
+            <div className="text-left">
+              <h3 className="font-semibold text-lg">Contraseña</h3>
+              <p className="text-gray-500 text-sm">
+                Método tradicional con email y contraseña
+              </p>
             </div>
           </motion.button>
         </div>

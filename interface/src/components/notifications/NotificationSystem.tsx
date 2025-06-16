@@ -43,11 +43,7 @@ function Notification({ type, message, onClose }: NotificationProps) {
         </div>
         <button
           onClick={onClose}
-          className={`p-1 rounded-md transition-colors ${
-            type === "success"
-              ? "hover:bg-green-200 text-green-600"
-              : "hover:bg-red-200 text-red-600"
-          }`}
+          className="bg-gradient-to-br from-red-600 to-red-400 text-white font-semibold rounded-xl shadow hover:from-red-700 hover:to-red-500 transition-all duration-200 p-2 ml-2 flex items-center justify-center"
         >
           <FaTimes className="w-3 h-3" />
         </button>

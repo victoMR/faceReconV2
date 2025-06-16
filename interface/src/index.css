@@ -1,3 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+  Usa las clases de Tailwind directamente en className de los botones en React.
+  No declares reglas CSS con // ni con @apply aquí, solo comentarios o ejemplos.
+  Ejemplo de uso en React:
+  <button className="bg-gradient-to-br from-blue-700 to-teal-500 text-white font-semibold rounded-xl shadow-lg hover:from-blue-800 hover:to-teal-600 transition-all duration-200 px-6 py-3 flex items-center justify-center space-x-2">Registrar</button>
+*/

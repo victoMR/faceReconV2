@@ -50,30 +50,24 @@ export default function HomePage({ onModeChange }: HomePageProps) {
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.6, duration: 0.5 }}
-          className="flex flex-col sm:flex-row gap-4 justify-center"
+          className="flex flex-col sm:flex-row gap-6 justify-center"
         >
+          {/* Botón Iniciar Sesión */}
           <button
             onClick={() => onModeChange("login")}
-            className="px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 hover:shadow-lg flex items-center justify-center space-x-3"
-            style={{
-              backgroundColor: "#54a8a0",
-              color: "white",
-            }}
+            className="backdrop-blur-md bg-white/30 border border-blue-200 shadow-2xl rounded-2xl px-10 py-6 flex items-center justify-center space-x-4 text-xl font-bold text-blue-900 hover:bg-white/60 hover:shadow-blue-200 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-200"
+            style={{ minWidth: 220 }}
           >
-            <FaSignInAlt className="w-5 h-5" />
+            <FaSignInAlt className="w-7 h-7 text-blue-700" />
             <span>Iniciar Sesión</span>
           </button>
-
+          {/* Botón Registrarse */}
           <button
             onClick={() => onModeChange("register-form")}
-            className="px-8 py-4 rounded-xl font-semibold text-lg border-2 transition-all duration-200 hover:shadow-lg flex items-center justify-center space-x-3"
-            style={{
-              borderColor: "#54a8a0",
-              color: "#54a8a0",
-              backgroundColor: "transparent",
-            }}
+            className="backdrop-blur-md bg-white/30 border border-teal-200 shadow-2xl rounded-2xl px-10 py-6 flex items-center justify-center space-x-4 text-xl font-bold text-teal-900 hover:bg-white/60 hover:shadow-teal-200 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-200"
+            style={{ minWidth: 220 }}
           >
-            <FaUser className="w-5 h-5" />
+            <FaUser className="w-7 h-7 text-teal-700" />
             <span>Registrarse</span>
           </button>
         </motion.div>

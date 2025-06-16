@@ -17,19 +17,16 @@ export default function Header({
         <div className="flex justify-between items-center">
           {/* Logo y título */}
           <div className="flex items-center space-x-3">
-            <div
-              className="bg-gradient-to-br from-blue-900 to-blue-800 p-2 rounded-lg"
-              style={{ backgroundColor: "#3e5866" }}
+            <button
+              className="bg-gradient-to-br from-blue-900 to-blue-800 p-2 rounded-lg hover:from-blue-800 hover:to-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-200"
+              onClick={() => onModeChange("home")}
+              aria-label="Ir a inicio"
+              type="button"
             >
               <FaShieldAlt className="w-6 h-6 text-white" />
-            </div>
+            </button>
             <div>
-              <h1
-                className="text-2xl font-semibold"
-                style={{ color: "#3e5866" }}
-              >
-                SecureAuth
-              </h1>
+              <h1 className="text-2xl font-semibold text-[#3e5866]">SecureAuth</h1>
               <p className="text-gray-500 text-sm">
                 Sistema de Autenticación Biométrica Avanzado
               </p>
@@ -41,39 +38,21 @@ export default function Header({
             <div className="flex space-x-3">
               <button
                 onClick={() => onModeChange("login")}
-                className="font-medium py-2 px-4 rounded-lg border transition-colors flex items-center space-x-2 hover:opacity-80"
-                style={{
-                  color: "#54a8a0",
-                  borderColor: "#54a8a0",
-                }}
+                className="main-btn-outline flex items-center space-x-2"
+                type="button"
               >
                 <FaSignInAlt className="w-4 h-4" />
                 <span>Iniciar Sesión</span>
               </button>
-
               <button
                 onClick={() => onModeChange("register-form")}
-                className="font-medium py-2 px-4 rounded-lg transition-colors flex items-center space-x-2 text-white hover:opacity-90"
-                style={{ backgroundColor: "#54a8a0" }}
+                className="main-btn flex items-center space-x-2"
+                type="button"
               >
                 <FaUser className="w-4 h-4" />
                 <span>Registrarse</span>
               </button>
             </div>
-          )}
-
-          {mode !== "home" && mode !== "dashboard" && (
-            <button
-              onClick={() => onModeChange("home")}
-              className="font-medium py-2 px-4 rounded-lg border transition-colors flex items-center space-x-2 hover:opacity-80"
-              style={{
-                color: "#607123",
-                borderColor: "#607123",
-              }}
-            >
-              <FaHome className="w-4 h-4" />
-              <span>Inicio</span>
-            </button>
           )}
         </div>
       </div>

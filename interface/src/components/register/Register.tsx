@@ -1,8 +1,43 @@
 "use client";
 
+// 1. Paleta de colores y clases utilitarias para botones globales
+// Agrega esto al principio del archivo para definir clases globales de botones
+// Puedes moverlo a index.css o crear un archivo Button.module.css si prefieres modularidad
+
+/* Ejemplo de clases globales para botones principales, secundarios, de peligro, etc. */
+// .btn-primary {
+//   @apply bg-gradient-to-br from-blue-700 to-teal-500 text-white font-semibold rounded-xl shadow-lg hover:from-blue-800 hover:to-teal-600 transition-all duration-200 px-6 py-3 flex items-center justify-center space-x-2;
+// }
+// .btn-secondary {
+//   @apply bg-gradient-to-br from-gray-200 to-gray-100 text-gray-800 font-semibold rounded-xl shadow hover:bg-gray-300 transition-all duration-200 px-6 py-3 flex items-center justify-center space-x-2;
+// }
+// .btn-danger {
+//   @apply bg-gradient-to-br from-red-600 to-red-400 text-white font-semibold rounded-xl shadow hover:from-red-700 hover:to-red-500 transition-all duration-200 px-6 py-3 flex items-center justify-center space-x-2;
+// }
+// .btn-outline {
+//   @apply border-2 border-blue-700 text-blue-700 bg-white font-semibold rounded-xl hover:bg-blue-50 transition-all duration-200 px-6 py-3 flex items-center justify-center space-x-2;
+// }
+
+// 2. Reemplaza los estilos inline y clases de botones en el formulario por estas clases
+// Ejemplo para el botón principal de registro:
+// <motion.button
+//   className="btn-primary w-full"
+//   ...
+// >
+//   ...
+// </motion.button>
+
+// 3. Aplica el mismo patrón en todos los botones de la app para unificar el estilo
+// Puedes crear un componente Button.tsx reutilizable si lo deseas
+
+// 4. Opcional: agrega un efecto sutil de sombra y animación de presión en todos los botones
+//   whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+
+// 5. Si usas Tailwind, puedes agregar las clases en index.css o como componentes utilitarios
+
 import type React from "react";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   FaUser,
@@ -14,6 +49,9 @@ import {
   FaEyeSlash,
   FaSpinner,
   FaCamera,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaInfoCircle,
 } from "react-icons/fa";
 
 interface RegistrationData {
@@ -59,6 +97,20 @@ export default function RegistrationForm({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
+  const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
+  const firstInvalidRef = useRef<HTMLInputElement | null>(null);
+
+  // Validar fortaleza de contraseña
+  const getPasswordStrength = (password: string) => {
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[a-z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+    return score;
+  };
 
   // Validar formulario
   const validateForm = (): boolean => {
@@ -108,7 +160,10 @@ export default function RegistrationForm({
       ...registrationData,
       [field]: value,
     });
-
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    if (field === "password") {
+      setPasswordStrength(getPasswordStrength(value));
+    }
     // Limpiar error específico cuando el usuario empieza a escribir
     if (formErrors[field]) {
       setFormErrors((prev) => ({
@@ -121,7 +176,6 @@ export default function RegistrationForm({
   // Manejar envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (validateForm()) {
       setIsLoading(true);
       try {
@@ -129,7 +183,26 @@ export default function RegistrationForm({
       } finally {
         setIsLoading(false);
       }
+    } else {
+      // Foco en el primer campo inválido
+      setTimeout(() => {
+        if (firstInvalidRef.current) {
+          firstInvalidRef.current.focus();
+        }
+      }, 100);
     }
+  };
+
+  // Utilidad para iconos de validación
+  const getValidationIcon = (field: keyof RegistrationData) => {
+    if (!touched[field]) return null;
+    if (formErrors[field]) {
+      return <FaTimesCircle className="text-red-400 ml-2" />;
+    }
+    if (registrationData[field] && !formErrors[field]) {
+      return <FaCheckCircle className="text-green-500 ml-2" />;
+    }
+    return null;
   };
 
   return (
@@ -164,19 +237,26 @@ export default function RegistrationForm({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Nombre <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={registrationData.firstName}
-                  onChange={(e) =>
-                    handleInputChange("firstName", e.target.value)
-                  }
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                    formErrors.firstName
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-300 hover:border-gray-400"
-                  }`}
-                  placeholder="Juan"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={registrationData.firstName}
+                    onChange={(e) =>
+                      handleInputChange("firstName", e.target.value)
+                    }
+                    onBlur={() => setTouched((prev) => ({ ...prev, firstName: true }))}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                      formErrors.firstName
+                        ? "border-red-500 bg-red-50"
+                        : touched.firstName && registrationData.firstName && !formErrors.firstName
+                        ? "border-green-400 bg-green-50"
+                        : "border-gray-300 hover:border-gray-400"
+                    }`}
+                    placeholder="Juan"
+                    ref={formErrors.firstName && !firstInvalidRef.current ? firstInvalidRef : undefined}
+                  />
+                  {getValidationIcon("firstName")}
+                </div>
                 {formErrors.firstName && (
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
@@ -193,19 +273,26 @@ export default function RegistrationForm({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Apellido <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={registrationData.lastName}
-                  onChange={(e) =>
-                    handleInputChange("lastName", e.target.value)
-                  }
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                    formErrors.lastName
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-300 hover:border-gray-400"
-                  }`}
-                  placeholder="Pérez"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={registrationData.lastName}
+                    onChange={(e) =>
+                      handleInputChange("lastName", e.target.value)
+                    }
+                    onBlur={() => setTouched((prev) => ({ ...prev, lastName: true }))}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                      formErrors.lastName
+                        ? "border-red-500 bg-red-50"
+                        : touched.lastName && registrationData.lastName && !formErrors.lastName
+                        ? "border-green-400 bg-green-50"
+                        : "border-gray-300 hover:border-gray-400"
+                    }`}
+                    placeholder="Pérez"
+                    ref={formErrors.lastName && !firstInvalidRef.current ? firstInvalidRef : undefined}
+                  />
+                  {getValidationIcon("lastName")}
+                </div>
                 {formErrors.lastName && (
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
@@ -223,19 +310,24 @@ export default function RegistrationForm({
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Correo Electrónico <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
+              <div className="relative flex items-center">
                 <FaEnvelope className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                 <input
                   type="email"
                   value={registrationData.email}
                   onChange={(e) => handleInputChange("email", e.target.value)}
+                  onBlur={() => setTouched((prev) => ({ ...prev, email: true }))}
                   className={`pl-10 w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     formErrors.email
                       ? "border-red-500 bg-red-50"
+                      : touched.email && registrationData.email && !formErrors.email
+                      ? "border-green-400 bg-green-50"
                       : "border-gray-300 hover:border-gray-400"
                   }`}
                   placeholder="juan.perez@ejemplo.com"
+                  ref={formErrors.email && !firstInvalidRef.current ? firstInvalidRef : undefined}
                 />
+                {getValidationIcon("email")}
               </div>
               {formErrors.email && (
                 <motion.p
@@ -253,8 +345,11 @@ export default function RegistrationForm({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Contraseña <span className="text-red-500">*</span>
+                  <span className="ml-1" title="Debe tener al menos 8 caracteres, mayúsculas, minúsculas, números y símbolos.">
+                    <FaInfoCircle className="inline text-blue-400" />
+                  </span>
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <FaLock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                   <input
                     type={showPassword ? "text" : "password"}
@@ -262,24 +357,49 @@ export default function RegistrationForm({
                     onChange={(e) =>
                       handleInputChange("password", e.target.value)
                     }
+                    onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
                     className={`pl-10 pr-10 w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.password
                         ? "border-red-500 bg-red-50"
+                        : touched.password && registrationData.password && !formErrors.password
+                        ? "border-green-400 bg-green-50"
                         : "border-gray-300 hover:border-gray-400"
                     }`}
                     placeholder="••••••••"
+                    ref={formErrors.password && !firstInvalidRef.current ? firstInvalidRef : undefined}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 transition-colors"
+                    className="absolute right-8 top-3 text-gray-400 hover:text-gray-600 transition-colors"
+                    tabIndex={-1}
                   >
-                    {showPassword ? (
-                      <FaEyeSlash className="w-5 h-5" />
-                    ) : (
-                      <FaEye className="w-5 h-5" />
-                    )}
+                    {showPassword ? <FaEyeSlash className="w-5 h-5" /> : <FaEye className="w-5 h-5" />}
                   </button>
+                  {getValidationIcon("password")}
+                </div>
+                {/* Barra de fortaleza de contraseña */}
+                <div className="h-2 mt-2 rounded bg-gray-200 overflow-hidden">
+                  <div
+                    className={`h-2 rounded transition-all duration-300 ${
+                      passwordStrength <= 2
+                        ? "bg-red-400 w-1/5"
+                        : passwordStrength === 3
+                        ? "bg-yellow-400 w-3/5"
+                        : passwordStrength >= 4
+                        ? "bg-green-500 w-full"
+                        : ""
+                    }`}
+                  ></div>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Fortaleza: {[
+                    "Débil",
+                    "Débil",
+                    "Media",
+                    "Fuerte",
+                    "Muy fuerte",
+                  ][passwordStrength]}
                 </div>
                 {formErrors.password && (
                   <motion.p
@@ -297,7 +417,7 @@ export default function RegistrationForm({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Confirmar Contraseña <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <FaLock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                   <input
                     type={showConfirmPassword ? "text" : "password"}
@@ -305,12 +425,16 @@ export default function RegistrationForm({
                     onChange={(e) =>
                       handleInputChange("confirmPassword", e.target.value)
                     }
+                    onBlur={() => setTouched((prev) => ({ ...prev, confirmPassword: true }))}
                     className={`pl-10 pr-10 w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.confirmPassword
                         ? "border-red-500 bg-red-50"
+                        : touched.confirmPassword && registrationData.confirmPassword && !formErrors.confirmPassword
+                        ? "border-green-400 bg-green-50"
                         : "border-gray-300 hover:border-gray-400"
                     }`}
                     placeholder="••••••••"
+                    ref={formErrors.confirmPassword && !firstInvalidRef.current ? firstInvalidRef : undefined}
                   />
                   <button
                     type="button"
@@ -323,6 +447,7 @@ export default function RegistrationForm({
                       <FaEye className="w-5 h-5" />
                     )}
                   </button>
+                  {getValidationIcon("confirmPassword")}
                 </div>
                 {formErrors.confirmPassword && (
                   <motion.p
@@ -342,19 +467,24 @@ export default function RegistrationForm({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Teléfono <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <FaPhone className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                   <input
                     type="tel"
                     value={registrationData.phone}
                     onChange={(e) => handleInputChange("phone", e.target.value)}
+                    onBlur={() => setTouched((prev) => ({ ...prev, phone: true }))}
                     className={`pl-10 w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.phone
                         ? "border-red-500 bg-red-50"
+                        : touched.phone && registrationData.phone && !formErrors.phone
+                        ? "border-green-400 bg-green-50"
                         : "border-gray-300 hover:border-gray-400"
                     }`}
                     placeholder="3001234567"
+                    ref={formErrors.phone && !firstInvalidRef.current ? firstInvalidRef : undefined}
                   />
+                  {getValidationIcon("phone")}
                 </div>
                 {formErrors.phone && (
                   <motion.p
@@ -373,7 +503,7 @@ export default function RegistrationForm({
                   Número de Identificación{" "}
                   <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <FaIdCard className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                   <input
                     type="text"
@@ -381,13 +511,18 @@ export default function RegistrationForm({
                     onChange={(e) =>
                       handleInputChange("idNumber", e.target.value)
                     }
+                    onBlur={() => setTouched((prev) => ({ ...prev, idNumber: true }))}
                     className={`pl-10 w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.idNumber
                         ? "border-red-500 bg-red-50"
+                        : touched.idNumber && registrationData.idNumber && !formErrors.idNumber
+                        ? "border-green-400 bg-green-50"
                         : "border-gray-300 hover:border-gray-400"
                     }`}
                     placeholder="12345678"
+                    ref={formErrors.idNumber && !firstInvalidRef.current ? firstInvalidRef : undefined}
                   />
+                  {getValidationIcon("idNumber")}
                 </div>
                 {formErrors.idNumber && (
                   <motion.p
@@ -422,13 +557,13 @@ export default function RegistrationForm({
 
             {/* Botón de envío */}
             <div className="flex flex-col sm:flex-row gap-4 pt-6">
+              {/* Botón principal de registro (profesional y consistente) */}
               <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
                 type="submit"
                 disabled={isLoading}
-                className="flex-1 py-3 px-6 rounded-lg font-semibold text-white transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                style={{ backgroundColor: "#54a8a0" }}
+                className="bg-blue-600/90 text-white font-semibold rounded-2xl shadow-md hover:bg-blue-700 transition-all duration-200 px-8 py-4 flex items-center justify-center space-x-3 w-full disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-4 focus:ring-blue-200"
               >
                 {isLoading ? (
                   <>

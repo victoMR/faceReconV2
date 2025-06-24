@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import Header from "./components/Header";
 import HomePage from "./components/home/Home";
@@ -51,6 +51,16 @@ export default function App() {
     email: "",
     password: "",
   });
+
+  // Restaurar sesión desde localStorage al cargar la app
+  useEffect(() => {
+    const storedToken = localStorage.getItem("userToken");
+    if (storedToken) {
+      setUserToken(storedToken);
+      setIsAuthenticated(true);
+      setMode("dashboard");
+    }
+  }, []);
 
   // Verificar estado del sistema
   useEffect(() => {
@@ -138,33 +148,35 @@ export default function App() {
     }
   };
 
+  // Guardar token en localStorage al hacer login
   const handleLoginComplete = (success, token) => {
     if (success && token) {
       setUserToken(token);
       setIsAuthenticated(true);
       setMode("dashboard");
+      localStorage.setItem("userToken", token);
       setSuccessMessage("Autenticación exitosa. Bienvenido al sistema.");
     } else {
       setErrorMessage("Error durante la autenticación");
     }
   };
 
+  // Guardar token en localStorage al login tradicional
   const handlePasswordLogin = async () => {
     try {
       if (!loginData.email || !loginData.password) {
         setErrorMessage("Email y contraseña son requeridos");
         return;
       }
-
       const response = await ApiService.loginCredentials(
         loginData.email,
         loginData.password
       );
-
       if (response.success) {
         setUserToken(response.userToken);
         setIsAuthenticated(true);
         setMode("dashboard");
+        localStorage.setItem("userToken", response.userToken);
         setSuccessMessage("Login exitoso. Bienvenido al sistema.");
         setLoginData({ email: "", password: "" });
       } else {
@@ -176,12 +188,14 @@ export default function App() {
     }
   };
 
+  // Limpiar sesión de localStorage al hacer logout
   const handleLogout = () => {
     setUserToken(null);
     setIsAuthenticated(false);
     setCurrentUser(null);
     setMode("home");
     setSuccessMessage("Sesión cerrada exitosamente");
+    localStorage.removeItem("userToken");
   };
 
   const handleRegistrationSubmit = async () => {
@@ -238,12 +252,14 @@ export default function App() {
         onCheckSystem={checkSystemStatus}
       />
 
-      {/* Header */}
-      <Header
-        mode={mode}
-        isAuthenticated={isAuthenticated}
-        onModeChange={setMode}
-      />
+      {/* Header solo si no está en dashboard autenticado */}
+      {!(mode === "dashboard" && isAuthenticated) && (
+        <Header
+          mode={mode}
+          isAuthenticated={isAuthenticated}
+          onModeChange={setMode}
+        />
+      )}
 
       {/* Contenido principal */}
       <main className="flex-1">

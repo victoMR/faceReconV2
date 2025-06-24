@@ -60,90 +60,81 @@ export default function PasswordLogin({
       initial="initial"
       animate="enter"
       exit="exit"
-      className="min-h-screen flex items-center justify-center px-4 py-8"
+      className="min-h-screen py-8 px-4 flex items-center justify-center"
     >
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <div
-            className="inline-flex p-4 rounded-full mb-4"
-            style={{ backgroundColor: "#f7f9f2" }}
-          >
-            <FaLock className="w-8 h-8" style={{ color: "#95b54c" }} />
-          </div>
-          <h2 className="text-3xl font-bold" style={{ color: "#3e5866" }}>
+      <div className="max-w-md w-full">
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-bold text-[#3e5866]">
             Iniciar con Contraseña
           </h2>
-          <p className="text-gray-600 mt-2">
-            Ingrese sus credenciales para acceder
-          </p>
+          <p className="text-gray-600 mt-2">Ingrese sus credenciales para acceder</p>
         </div>
-
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Correo Electrónico
-            </label>
-            <div className="relative">
-              <FaEnvelope className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-              <input
-                type="email"
-                value={loginData.email}
-                onChange={(e) => handleInputChange("email", e.target.value)}
-                className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="usuario@ejemplo.com"
-                required
-              />
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Correo Electrónico
+              </label>
+              <div className="relative flex items-center">
+                <FaEnvelope className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                <input
+                  type="email"
+                  value={loginData.email}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                  className="pl-10 w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors border-gray-300 hover:border-gray-400"
+                  placeholder="usuario@ejemplo.com"
+                  required
+                />
+              </div>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Contraseña
-            </label>
-            <div className="relative">
-              <FaLock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-              <input
-                type={showPassword ? "text" : "password"}
-                value={loginData.password}
-                onChange={(e) => handleInputChange("password", e.target.value)}
-                className="pl-10 pr-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="••••••••"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? (
-                  <FaEyeSlash className="w-5 h-5" />
-                ) : (
-                  <FaEye className="w-5 h-5" />
-                )}
-              </button>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Contraseña
+              </label>
+              <div className="relative flex items-center">
+                <FaLock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={loginData.password}
+                  onChange={(e) => handleInputChange("password", e.target.value)}
+                  className="pl-10 pr-10 w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors border-gray-300 hover:border-gray-400"
+                  placeholder="••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? (
+                    <FaEyeSlash className="w-5 h-5" />
+                  ) : (
+                    <FaEye className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
-
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            type="submit"
-            disabled={isLoading}
-            className="bg-gradient-to-br from-green-600 to-lime-500 text-white font-semibold rounded-xl shadow-lg hover:from-green-700 hover:to-lime-600 transition-all duration-200 px-6 py-3 flex items-center justify-center space-x-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? (
-              <>
-                <FaSpinner className="w-5 h-5 animate-spin" />
-                <span>Iniciar Sesión</span>
-              </>
-            ) : (
-              <>
-                <FaSignInAlt className="w-5 h-5" />
-                <span>Iniciar Sesión</span>
-              </>
-            )}
-          </motion.button>
-        </form>
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              type="submit"
+              disabled={isLoading}
+              className="bg-blue-600/90 text-white font-semibold rounded-2xl shadow-md hover:bg-blue-700 transition-all duration-200 px-8 py-4 flex items-center justify-center space-x-3 w-full disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-4 focus:ring-blue-200"
+            >
+              {isLoading ? (
+                <>
+                  <FaSpinner className="w-5 h-5 animate-spin" />
+                  <span>Iniciando...</span>
+                </>
+              ) : (
+                <>
+                  <FaSignInAlt className="w-5 h-5" />
+                  <span>Iniciar Sesión</span>
+                </>
+              )}
+            </motion.button>
+          </form>
+        </div>
       </div>
     </motion.div>
   );

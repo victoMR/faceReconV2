@@ -20,7 +20,7 @@ function Notification({ type, message, onClose }: NotificationProps) {
       initial={{ opacity: 0, y: -20, x: "100%" }}
       animate={{ opacity: 1, y: 0, x: 0 }}
       exit={{ opacity: 0, y: -20, x: "100%" }}
-      className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl backdrop-blur-sm border max-w-sm ${
+      className={`fixed bottom-4 right-4 z-50 p-4 rounded-xl shadow-xl backdrop-blur-sm border max-w-sm ${
         type === "success"
           ? "bg-green-50 bg-opacity-95 border-green-200 text-green-800"
           : "bg-red-50 bg-opacity-95 border-red-200 text-red-800"
@@ -59,21 +59,23 @@ export default function NotificationSystem({
   onClearError,
 }: NotificationSystemProps) {
   return (
-    <AnimatePresence>
-      {successMessage && (
-        <Notification
-          type="success"
-          message={successMessage}
-          onClose={onClearSuccess}
-        />
-      )}
-      {errorMessage && (
-        <Notification
-          type="error"
-          message={errorMessage}
-          onClose={onClearError}
-        />
-      )}
-    </AnimatePresence>
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end space-y-4">
+      <AnimatePresence>
+        {successMessage && (
+          <Notification
+            type="success"
+            message={successMessage}
+            onClose={onClearSuccess}
+          />
+        )}
+        {errorMessage && (
+          <Notification
+            type="error"
+            message={errorMessage}
+            onClose={onClearError}
+          />
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

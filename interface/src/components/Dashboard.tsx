@@ -81,6 +81,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
     loadUserData();
   }, []);
 
+  // --- Control de pestaña única activa ---
+  useEffect(() => {
+    // Generar un ID único para esta pestaña
+    const tabId = sessionStorage.getItem('tabId') || crypto.randomUUID();
+    sessionStorage.setItem('tabId', tabId);
+    localStorage.setItem('activeTabId', tabId);
+
+    // Al cambiar de pestaña activa en otro tab, cerrar sesión aquí
+    const onStorage = (e) => {
+      if (e.key === 'activeTabId' && e.newValue !== tabId) {
+        addNotification('warning', 'Esta sesión se ha abierto en otra pestaña.');
+        setTimeout(() => handleLogout(), 1500);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   const addNotification = (type: 'success' | 'warning' | 'error', message: string) => {
     const id = Date.now();
     setNotifications(prev => [...prev, { id, type, message }]);
@@ -677,35 +695,31 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
         ))}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <div className="p-2 rounded-lg text-white" style={{backgroundColor: '#3e5866'}}>
-                <FaUserShield className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-800">Panel de Control</h1>
-                <p className="text-sm text-gray-600">
-                  Bienvenido, {user?.firstName} {user?.lastName}
-                </p>
-              </div>
+      {/* Modern Header - único y estilizado */}
+      <header className="bg-gradient-to-r from-[#3e5866] to-[#54a8a0] shadow-md border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-md border-2 border-[#54a8a0]">
+              <FaUserShield className="w-8 h-8 text-[#3e5866]" />
             </div>
-
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleLogout}
-              className="flex items-center space-x-2 px-4 py-2 text-white rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200"
-              style={{backgroundColor: '#dc2626'}}
-            >
-              <FaSignOutAlt className="w-4 h-4" />
-              <span>Cerrar Sesión</span>
-            </motion.button>
+            <div>
+              <h1 className="text-2xl font-extrabold text-white tracking-tight leading-tight drop-shadow-sm">Panel de Control</h1>
+              <p className="text-sm text-white/80 font-medium mt-1">
+                Bienvenido, <span className="font-semibold text-white">{user?.firstName} {user?.lastName}</span>
+              </p>
+            </div>
           </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleLogout}
+            className="flex items-center space-x-2 px-5 py-2 text-white rounded-full font-semibold shadow-lg hover:shadow-xl transition-all duration-200 bg-[#dc2626] hover:bg-[#b91c1c] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#dc2626]"
+          >
+            <FaSignOutAlt className="w-5 h-5" />
+            <span>Cerrar Sesión</span>
+          </motion.button>
         </div>
-      </div>
+      </header>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -737,4 +751,4 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;

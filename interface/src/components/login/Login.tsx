@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { FaSignInAlt, FaCamera, FaLock } from "react-icons/fa";
+import { FaSignInAlt, FaLock, FaUser } from "react-icons/fa";
 
 interface LoginPageProps {
   onModeChange: (mode: string) => void;
@@ -49,33 +49,16 @@ export default function LoginPage({ onModeChange }: LoginPageProps) {
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            onClick={() => onModeChange("login-facial")}
+            onClick={() => onModeChange("login-password")}
             className="bg-white/80 border border-blue-200 text-blue-900 font-semibold rounded-2xl shadow-md hover:bg-blue-50 transition-all duration-200 px-8 py-5 flex items-center justify-center space-x-4 w-full mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100"
           >
             <div className="p-3 rounded-xl bg-blue-100">
-              <FaCamera className="w-6 h-6 text-blue-700" />
+              <FaUser className="w-6 h-6 text-blue-700" />
             </div>
             <div className="text-left">
-              <h3 className="font-semibold text-lg">Reconocimiento Facial</h3>
+              <h3 className="font-semibold text-lg">Login Tradicional</h3>
               <p className="text-gray-500 text-sm">
-                Autenticación biométrica avanzada con detección de vida
-              </p>
-            </div>
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => onModeChange("login-password")}
-            className="bg-white/80 border border-gray-200 text-gray-900 font-semibold rounded-2xl shadow-md hover:bg-gray-50 transition-all duration-200 px-8 py-5 flex items-center justify-center space-x-4 w-full focus:outline-none focus:ring-4 focus:ring-gray-100"
-          >
-            <div className="p-3 rounded-xl bg-gray-100">
-              <FaLock className="w-6 h-6 text-gray-700" />
-            </div>
-            <div className="text-left">
-              <h3 className="font-semibold text-lg">Contraseña</h3>
-              <p className="text-gray-500 text-sm">
-                Método tradicional con email y contraseña
+                Ingrese con usuario y contraseña
               </p>
             </div>
           </motion.button>

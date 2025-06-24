@@ -219,6 +219,8 @@ class ApiService {
     }
   }
 
+  // --- MÉTODOS DE RECONOCIMIENTO FACIAL DESHABILITADOS ---
+  /*
   /**
    * Registra un rostro en el sistema (requiere autenticación)
    */

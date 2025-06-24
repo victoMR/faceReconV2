@@ -26,32 +26,13 @@ export default function Header({
               <FaShieldAlt className="w-6 h-6 text-white" />
             </button>
             <div>
-              <h1 className="text-2xl font-semibold text-[#3e5866]">SecureAuth</h1>
-              <p className="text-gray-500 text-sm">
-                Sistema de Autenticación Biométrica Avanzado
-              </p>
+              <h1 className="text-2xl font-semibold text-[#3e5866]">Mono Repo</h1>
             </div>
           </div>
 
           {/* Navegación */}
           {!isAuthenticated && mode === "home" && (
             <div className="flex space-x-3">
-              <button
-                onClick={() => onModeChange("login")}
-                className="main-btn-outline flex items-center space-x-2"
-                type="button"
-              >
-                <FaSignInAlt className="w-4 h-4" />
-                <span>Iniciar Sesión</span>
-              </button>
-              <button
-                onClick={() => onModeChange("register-form")}
-                className="main-btn flex items-center space-x-2"
-                type="button"
-              >
-                <FaUser className="w-4 h-4" />
-                <span>Registrarse</span>
-              </button>
             </div>
           )}
         </div>

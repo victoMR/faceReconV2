@@ -143,116 +143,7 @@ router.post("/auth/login", Controller.loginSession);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/auth/logout", authenticateToken, Controller.logoutSession);
-
-/**
- * @swagger
- * /face/enroll:
- *   post:
- *     summary: Enrollar embeddings faciales
- *     description: Registra los embeddings faciales del usuario para posterior autenticación
- *     tags: [Biometría Facial]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [embeddings]
- *             properties:
- *               embeddings:
- *                 type: array
- *                 items:
- *                   $ref: '#/components/schemas/FaceEmbedding'
- *                 description: Array de embeddings faciales (típicamente 3 capturas)
- *     responses:
- *       200:
- *         description: Embeddings enrollados exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/SuccessResponse'
- *                 - type: object
- *                   properties:
- *                     count:
- *                       type: integer
- *                       description: Número de embeddings enrollados
- *       400:
- *         description: Datos de entrada inválidos
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       401:
- *         description: Token requerido
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       403:
- *         description: Token inválido
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       500:
- *         description: Error interno del servidor
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post("/face/enroll", authenticateToken, Controller.enrollFace);
-
-/**
- * @swagger
- * /face/login:
- *   post:
- *     summary: Login facial
- *     description: Autenticación mediante reconocimiento facial usando embeddings
- *     tags: [Biometría Facial]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/FaceLogin'
- *     responses:
- *       200:
- *         description: Login facial exitoso
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/FaceLoginResponse'
- *       400:
- *         description: Embedding facial requerido
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       401:
- *         description: Rostro no reconocido
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       404:
- *         description: No hay usuarios con datos biométricos
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       500:
- *         description: Error interno del servidor
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post("/face/login", Controller.faceLogin);
+router.post("/auth/logout", authenticateToken(), Controller.logoutSession);
 
 /**
  * @swagger
@@ -301,7 +192,7 @@ router.post("/face/login", Controller.faceLogin);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/user/profile", authenticateToken, Controller.getUserProfile);
+router.get("/user/profile", authenticateToken(), Controller.getUserProfile);
 
 /**
  * @swagger
@@ -338,53 +229,6 @@ router.get("/user/profile", authenticateToken, Controller.getUserProfile);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/dashboard/stats", authenticateToken, Controller.getDashboardStats);
-
-/**
- * @swagger
- * /user/biometric:
- *   delete:
- *     summary: Eliminar datos biométricos
- *     description: Elimina todos los embeddings faciales del usuario autenticado
- *     tags: [Usuario]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Datos biométricos eliminados exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/SuccessResponse'
- *                 - type: object
- *                   properties:
- *                     deletedCount:
- *                       type: integer
- *                       description: Número de registros eliminados
- *       401:
- *         description: Token requerido
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       403:
- *         description: Token inválido
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       500:
- *         description: Error interno del servidor
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.delete(
-  "/user/biometric",
-  authenticateToken,
-  Controller.deleteBiometricData
-);
+router.get("/dashboard/stats", authenticateToken(), Controller.getDashboardStats);
 
 module.exports = router;

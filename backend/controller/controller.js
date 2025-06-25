@@ -17,23 +17,11 @@ module.exports = {
     return FacialAuthModel.logout(req, res);
   },
 
-  async enrollFace(req, res) {
-    return FacialAuthModel.enrollFace(req, res);
-  },
-
-  async faceLogin(req, res) {
-    return FacialAuthModel.faceLogin(req, res);
-  },
-
   async getUserProfile(req, res) {
     return FacialAuthModel.getUserProfile(req, res);
   },
 
   async getDashboardStats(req, res) {
     return FacialAuthModel.getDashboardStats(req, res);
-  },
-
-  async deleteBiometricData(req, res) {
-    return FacialAuthModel.deleteBiometricData(req, res);
   },
 };

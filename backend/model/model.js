@@ -1,11 +1,7 @@
 const { pool } = require("../config/database");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const {
-  JWT_SECRET,
-  SIMILARITY_THRESHOLD,
-  MIN_CONFIDENCE_THRESHOLD,
-} = require("../config/constats");
+const { JWT_SECRET } = require("../config/constats");
 
 class FacialAuthModel {
   // Función para generar token JWT
@@ -39,192 +35,6 @@ class FacialAuthModel {
       );
     } catch (err) {
       console.error("Error registrando intento de login:", err);
-    }
-  }
-
-  // Validar calidad del embedding
-  static validateEmbeddingQuality(embedding) {
-    if (!embedding || !Array.isArray(embedding) || embedding.length !== 128) {
-      return {
-        isValid: false,
-        reason: "Embedding inválido o dimensión incorrecta",
-      };
-    }
-
-    // Verificar que no sea un embedding vacío o corrupto
-    const magnitude = Math.sqrt(
-      embedding.reduce((sum, val) => sum + val * val, 0)
-    );
-    if (magnitude < 0.01) {
-      return {
-        isValid: false,
-        reason: "Embedding con magnitud muy baja (posiblemente corrupto)",
-      };
-    }
-
-    // Verificar que no todos los valores sean iguales (embedding corrupto)
-    const uniqueValues = new Set(embedding.map((v) => Math.round(v * 1000)))
-      .size;
-    if (uniqueValues < 10) {
-      return {
-        isValid: false,
-        reason: "Embedding con muy poca variabilidad (posiblemente corrupto)",
-      };
-    }
-
-    // Verificar que no haya valores extremos (posible corrupción)
-    const hasExtremeValues = embedding.some((val) => Math.abs(val) > 10);
-    if (hasExtremeValues) {
-      return { isValid: false, reason: "Embedding contiene valores extremos" };
-    }
-
-    return { isValid: true, reason: "Embedding válido" };
-  }
-
-  // Normalizar embedding para mejorar comparaciones
-  static normalizeEmbedding(embedding) {
-    const magnitude = Math.sqrt(
-      embedding.reduce((sum, val) => sum + val * val, 0)
-    );
-
-    if (magnitude === 0) {
-      console.warn(
-        "[Backend] Embedding con magnitud cero, no se puede normalizar"
-      );
-      return embedding.slice(); // Retornar copia sin normalizar
-    }
-
-    return embedding.map((val) => val / magnitude);
-  }
-
-  // Calcular similitud coseno
-  static calculateCosineSimilarity(embedding1, embedding2) {
-    let dotProduct = 0;
-    let magnitude1 = 0;
-    let magnitude2 = 0;
-
-    for (let i = 0; i < embedding1.length; i++) {
-      dotProduct += embedding1[i] * embedding2[i];
-      magnitude1 += embedding1[i] * embedding1[i];
-      magnitude2 += embedding2[i] * embedding2[i];
-    }
-
-    magnitude1 = Math.sqrt(magnitude1);
-    magnitude2 = Math.sqrt(magnitude2);
-
-    if (magnitude1 === 0 || magnitude2 === 0) {
-      return 0;
-    }
-
-    return dotProduct / (magnitude1 * magnitude2);
-  }
-
-  // Calcular distancia euclidiana
-  static calculateEuclideanDistance(embedding1, embedding2) {
-    let sum = 0;
-    for (let i = 0; i < embedding1.length; i++) {
-      const diff = embedding1[i] - embedding2[i];
-      sum += diff * diff;
-    }
-    return Math.sqrt(sum);
-  }
-
-  // Calcular correlación de Pearson
-  static calculatePearsonCorrelation(embedding1, embedding2) {
-    const n = embedding1.length;
-
-    const sum1 = embedding1.reduce((a, b) => a + b, 0);
-    const sum2 = embedding2.reduce((a, b) => a + b, 0);
-
-    const mean1 = sum1 / n;
-    const mean2 = sum2 / n;
-
-    let numerator = 0;
-    let sum1Sq = 0;
-    let sum2Sq = 0;
-
-    for (let i = 0; i < n; i++) {
-      const diff1 = embedding1[i] - mean1;
-      const diff2 = embedding2[i] - mean2;
-
-      numerator += diff1 * diff2;
-      sum1Sq += diff1 * diff1;
-      sum2Sq += diff2 * diff2;
-    }
-
-    const denominator = Math.sqrt(sum1Sq * sum2Sq);
-
-    if (denominator === 0) {
-      return 0;
-    }
-
-    return numerator / denominator;
-  }
-
-  // Función mejorada para calcular similitud facial con múltiples métricas
-  static calculateFacialSimilarity(embedding1, embedding2) {
-    if (!embedding1 || !embedding2) {
-      console.warn("[Backend] Embeddings nulos proporcionados");
-      return 0;
-    }
-
-    if (!Array.isArray(embedding1) || !Array.isArray(embedding2)) {
-      console.warn("[Backend] Embeddings no son arrays válidos");
-      return 0;
-    }
-
-    if (embedding1.length !== embedding2.length) {
-      console.warn(
-        `[Backend] Dimensiones de embeddings no coinciden: ${embedding1.length} vs ${embedding2.length}`
-      );
-      return 0;
-    }
-
-    if (embedding1.length !== 128) {
-      console.warn(
-        `[Backend] Embedding tiene dimensión incorrecta: ${embedding1.length}, esperado: 128`
-      );
-      return 0;
-    }
-
-    try {
-      // Normalizar embeddings antes de la comparación
-      const norm1 = this.normalizeEmbedding(embedding1);
-      const norm2 = this.normalizeEmbedding(embedding2);
-
-      // 1. Similitud coseno (la más efectiva para face-api.js)
-      const cosineSimilarity = this.calculateCosineSimilarity(norm1, norm2);
-
-      // 2. Distancia euclidiana normalizada
-      const euclideanDistance = this.calculateEuclideanDistance(norm1, norm2);
-      const euclideanSimilarity = Math.max(
-        0,
-        1 - euclideanDistance / Math.sqrt(2)
-      );
-
-      // 3. Correlación de Pearson
-      const pearsonCorrelation = this.calculatePearsonCorrelation(norm1, norm2);
-
-      // Combinar métricas con pesos optimizados para reconocimiento facial
-      const combinedSimilarity =
-        cosineSimilarity * 0.6 + // Peso mayor para coseno
-        euclideanSimilarity * 0.3 + // Peso medio para euclidiana
-        Math.max(0, pearsonCorrelation) * 0.1; // Peso menor para correlación
-
-      console.log(
-        `[Backend] Métricas de similitud: Coseno=${cosineSimilarity.toFixed(
-          4
-        )}, Euclidiana=${euclideanSimilarity.toFixed(
-          4
-        )}, Pearson=${pearsonCorrelation.toFixed(
-          4
-        )}, Combinada=${combinedSimilarity.toFixed(4)}`
-      );
-
-      return Math.max(0, Math.min(1, combinedSimilarity));
-    } catch (error) {
-      console.error("[Backend] Error calculando similitud facial:", error);
-      return 0;
     }
   }
 
@@ -305,16 +115,15 @@ class FacialAuthModel {
       // Generar token JWT
       const token = this.generateToken(newUser);
 
-      // Crear sesión activa
-      const tokenHash = bcrypt.hashSync(token, 10);
+      // Crear sesión activa - CAMBIO: Guardar el token completo, no el hash
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
 
       await client.query(
         `
-        INSERT INTO login_sessions (user_id, token_hash, ip_address, user_agent, expires_at)
+        INSERT INTO login_sessions (user_id, token, ip_address, user_agent, expires_at)
         VALUES ($1, $2, $3, $4, $5)
         `,
-        [newUser.id, tokenHash, req.ip, req.get("User-Agent"), expiresAt]
+        [newUser.id, token, req.ip, req.get("User-Agent"), expiresAt]
       );
 
       // Log del registro exitoso
@@ -431,16 +240,15 @@ class FacialAuthModel {
       // Generar token JWT
       const token = this.generateToken(user);
 
-      // Crear sesión activa
-      const tokenHash = bcrypt.hashSync(token, 10);
+      // Crear sesión activa - CAMBIO: Guardar el token completo, no el hash
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
       await client.query(
         `
-        INSERT INTO login_sessions (user_id, token_hash, ip_address, user_agent, expires_at)
+        INSERT INTO login_sessions (user_id, token, ip_address, user_agent, expires_at)
         VALUES ($1, $2, $3, $4, $5)
         `,
-        [user.id, tokenHash, req.ip, req.get("User-Agent"), expiresAt]
+        [user.id, token, req.ip, req.get("User-Agent"), expiresAt]
       );
 
       // Log del login exitoso
@@ -480,12 +288,22 @@ class FacialAuthModel {
   static async logout(req, res) {
     try {
       const userId = req.user.userId;
+      const authHeader = req.headers["authorization"];
+      const token = authHeader && authHeader.split(" ")[1];
 
-      // Desactivar sesiones activas del usuario
-      await pool.query(
-        "UPDATE login_sessions SET is_active = false WHERE user_id = $1 AND is_active = true",
-        [userId]
-      );
+      // Desactivar la sesión específica del token actual
+      if (token) {
+        await pool.query(
+          "UPDATE login_sessions SET is_active = false WHERE user_id = $1 AND token = $2",
+          [userId, token]
+        );
+      } else {
+        // Si no hay token, desactivar todas las sesiones del usuario
+        await pool.query(
+          "UPDATE login_sessions SET is_active = false WHERE user_id = $1 AND is_active = true",
+          [userId]
+        );
+      }
 
       res.json({
         success: true,
@@ -497,380 +315,6 @@ class FacialAuthModel {
         success: false,
         error: "Error interno del servidor",
       });
-    }
-  }
-
-  // Método para enrollar embeddings faciales
-  static async enrollFace(req, res) {
-    const client = await pool.connect();
-
-    try {
-      const { embeddings } = req.body;
-      const userId = req.user.userId;
-
-      if (
-        !embeddings ||
-        !Array.isArray(embeddings) ||
-        embeddings.length === 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          error: "Embeddings faciales son requeridos",
-        });
-      }
-
-      console.log(
-        `[Backend] Iniciando enrollment para usuario ${userId} con ${embeddings.length} embeddings`
-      );
-
-      // Validar todos los embeddings antes de procesar
-      const validatedEmbeddings = [];
-      const rejectedEmbeddings = [];
-
-      for (let i = 0; i < embeddings.length; i++) {
-        const embedding = embeddings[i];
-
-        if (!embedding.data || !Array.isArray(embedding.data)) {
-          rejectedEmbeddings.push({
-            index: i,
-            reason: "Datos de embedding faltantes o inválidos",
-            type: embedding.type || "unknown",
-          });
-          continue;
-        }
-
-        const validation = this.validateEmbeddingQuality(embedding.data);
-
-        if (validation.isValid) {
-          // Calcular score de calidad más preciso
-          const magnitude = Math.sqrt(
-            embedding.data.reduce((sum, val) => sum + val * val, 0)
-          );
-          const variance =
-            embedding.data.reduce((sum, val, _, arr) => {
-              const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-              return sum + Math.pow(val - mean, 2);
-            }, 0) / embedding.data.length;
-
-          const qualityScore = Math.min(
-            1.0,
-            (magnitude / 10) * 0.6 + (Math.sqrt(variance) / 2) * 0.4
-          );
-
-          validatedEmbeddings.push({
-            data: embedding.data,
-            type: embedding.type || "normal",
-            quality: Math.max(qualityScore, embedding.quality || 0.8),
-            originalIndex: i,
-          });
-
-          console.log(
-            `[Backend] ✅ Embedding ${i} validado - Tipo: ${
-              embedding.type
-            }, Calidad: ${qualityScore.toFixed(3)}`
-          );
-        } else {
-          rejectedEmbeddings.push({
-            index: i,
-            reason: validation.reason,
-            type: embedding.type || "unknown",
-          });
-          console.warn(
-            `[Backend] ❌ Embedding ${i} rechazado - ${validation.reason}`
-          );
-        }
-      }
-
-      // Verificar que tengamos al menos 2 embeddings válidos
-      if (validatedEmbeddings.length < 2) {
-        console.error(
-          `[Backend] Enrollment fallido: Solo ${validatedEmbeddings.length} embeddings válidos de ${embeddings.length}`
-        );
-        return res.status(400).json({
-          success: false,
-          error: `Se requieren al menos 2 embeddings válidos. Solo ${validatedEmbeddings.length} de ${embeddings.length} son válidos.`,
-          details: {
-            validEmbeddings: validatedEmbeddings.length,
-            rejectedEmbeddings: rejectedEmbeddings.length,
-            rejectionReasons: rejectedEmbeddings,
-          },
-        });
-      }
-
-      // Eliminar embeddings existentes del usuario
-      const deleteResult = await client.query(
-        "DELETE FROM face_embeddings WHERE user_id = $1",
-        [userId]
-      );
-      console.log(
-        `[Backend] Eliminados ${deleteResult.rowCount} embeddings existentes para usuario ${userId}`
-      );
-
-      // Insertar nuevos embeddings validados
-      let insertedCount = 0;
-      for (const embedding of validatedEmbeddings) {
-        try {
-          await client.query(
-            `
-            INSERT INTO face_embeddings (user_id, embedding_data, capture_type, quality_score, created_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            `,
-            [
-              userId,
-              JSON.stringify(embedding.data),
-              embedding.type,
-              embedding.quality,
-            ]
-          );
-          insertedCount++;
-        } catch (insertError) {
-          console.error(
-            `[Backend] Error insertando embedding ${embedding.type}:`,
-            insertError
-          );
-        }
-      }
-
-      if (insertedCount === 0) {
-        console.error(
-          `[Backend] Enrollment fallido: No se pudo insertar ningún embedding para usuario ${userId}`
-        );
-        return res.status(500).json({
-          success: false,
-          error: "Error almacenando embeddings faciales",
-        });
-      }
-
-      console.log(
-        `[Backend] ✅ Enrollment exitoso - Usuario: ${userId}, Embeddings insertados: ${insertedCount}/${validatedEmbeddings.length}`
-      );
-
-      // Preparar resumen de calidad
-      const qualitySummary = {
-        total: embeddings.length,
-        valid: validatedEmbeddings.length,
-        inserted: insertedCount,
-        rejected: rejectedEmbeddings.length,
-        averageQuality:
-          validatedEmbeddings.reduce((sum, emb) => sum + emb.quality, 0) /
-          validatedEmbeddings.length,
-        types: validatedEmbeddings.reduce((acc, emb) => {
-          acc[emb.type] = (acc[emb.type] || 0) + 1;
-          return acc;
-        }, {}),
-      };
-
-      res.json({
-        success: true,
-        message: "Embeddings faciales enrollados exitosamente",
-        count: insertedCount,
-        quality: qualitySummary,
-        warnings:
-          rejectedEmbeddings.length > 0
-            ? `${rejectedEmbeddings.length} embeddings fueron rechazados por baja calidad`
-            : null,
-      });
-    } catch (error) {
-      console.error("[Backend] Error crítico en enrollment:", error);
-      res.status(500).json({
-        success: false,
-        error: "Error interno procesando embeddings faciales",
-        details: error.message,
-      });
-    } finally {
-      client.release();
-    }
-  }
-
-  // Método para login facial
-  static async faceLogin(req, res) {
-    const client = await pool.connect();
-    try {
-      const { embedding } = req.body;
-      if (!embedding || !Array.isArray(embedding)) {
-        await this.logLoginAttempt(
-          "facial-login",
-          req.ip,
-          req.get("User-Agent"),
-          false,
-          "Embedding facial inválido"
-        );
-        return res.status(400).json({
-          success: false,
-          error: "Embedding facial requerido",
-        });
-      }
-      // Validar calidad del embedding de entrada
-      const embeddingValidation = this.validateEmbeddingQuality(embedding);
-      if (!embeddingValidation.isValid) {
-        console.warn(
-          `[Backend] Embedding inválido recibido: ${embeddingValidation.reason}`
-        );
-        await this.logLoginAttempt(
-          "facial-login",
-          req.ip,
-          req.get("User-Agent"),
-          false,
-          `Embedding inválido: ${embeddingValidation.reason}`
-        );
-        return res.status(400).json({
-          success: false,
-          error:
-            "La calidad del embedding facial es insuficiente. Intente con mejor iluminación.",
-        });
-      }
-      console.log(
-        `[Backend] Embedding válido recibido con ${embedding.length} dimensiones`
-      );
-      // Obtener todos los embeddings de usuarios activos
-      const embeddingsResult = await client.query(`
-        SELECT fe.*, u.id as user_id, u.first_name, u.last_name, u.email, fe.capture_type, fe.quality_score
-        FROM face_embeddings fe
-        JOIN users u ON fe.user_id = u.id
-        WHERE u.is_active = true
-        ORDER BY fe.quality_score DESC
-      `);
-      if (embeddingsResult.rows.length === 0) {
-        await this.logLoginAttempt(
-          "facial-login",
-          req.ip,
-          req.get("User-Agent"),
-          false,
-          "No hay usuarios con embeddings registrados"
-        );
-        return res.status(404).json({
-          success: false,
-          error: "No hay usuarios registrados con datos biométricos",
-        });
-      }
-      // Agrupar embeddings por usuario
-      const userEmbeddingsMap = {};
-      for (const row of embeddingsResult.rows) {
-        if (!userEmbeddingsMap[row.user_id]) {
-          userEmbeddingsMap[row.user_id] = {
-            user: {
-              id: row.user_id,
-              firstName: row.first_name,
-              lastName: row.last_name,
-              email: row.email,
-            },
-            embeddings: [],
-          };
-        }
-        userEmbeddingsMap[row.user_id].embeddings.push(row);
-      }
-      // Para cada usuario, contar cuántos embeddings superan el umbral
-      let bestUser = null;
-      let bestUserMatchCount = 0;
-      let bestUserAvgSimilarity = 0;
-      let bestUserMaxSimilarity = 0;
-      let bestUserEmbeddingDetails = null;
-      for (const userId in userEmbeddingsMap) {
-        const { user, embeddings } = userEmbeddingsMap[userId];
-        let matchCount = 0;
-        let similaritySum = 0;
-        let maxSimilarity = 0;
-        let bestEmbedding = null;
-        for (const storedEmbedding of embeddings) {
-          try {
-            const storedData = JSON.parse(storedEmbedding.embedding_data);
-            const storedValidation = this.validateEmbeddingQuality(storedData);
-            if (!storedValidation.isValid) continue;
-            const similarity = this.calculateFacialSimilarity(embedding, storedData);
-            if (similarity > maxSimilarity) {
-              maxSimilarity = similarity;
-              bestEmbedding = storedEmbedding;
-            }
-            if (similarity >= SIMILARITY_THRESHOLD) {
-              matchCount++;
-              similaritySum += similarity;
-            }
-          } catch (e) { continue; }
-        }
-        if (matchCount >= 2) { // Requiere al menos 2 coincidencias fuertes
-          const avgSimilarity = similaritySum / matchCount;
-          // Elegir el usuario con más coincidencias y mejor similitud promedio
-          if (
-            matchCount > bestUserMatchCount ||
-            (matchCount === bestUserMatchCount && avgSimilarity > bestUserAvgSimilarity)
-          ) {
-            bestUser = user;
-            bestUserMatchCount = matchCount;
-            bestUserAvgSimilarity = avgSimilarity;
-            bestUserMaxSimilarity = maxSimilarity;
-            bestUserEmbeddingDetails = bestEmbedding;
-          }
-        }
-      }
-      if (!bestUser) {
-        const debug = { threshold: SIMILARITY_THRESHOLD, minMatches: 2 };
-        await this.logLoginAttempt(
-          "facial-login",
-          req.ip,
-          req.get("User-Agent"),
-          false,
-          "No se encontraron coincidencias faciales suficientes"
-        );
-        return res.status(401).json({
-          success: false,
-          error:
-            "Rostro no reconocido. Intente nuevamente con mejor iluminación o registre su rostro.",
-          debug,
-        });
-      }
-      // Generar token para el usuario reconocido
-      const token = this.generateToken({
-        id: bestUser.id,
-        email: bestUser.email,
-        first_name: bestUser.firstName,
-        last_name: bestUser.lastName,
-      });
-      // Crear sesión activa
-      const tokenHash = bcrypt.hashSync(token, 10);
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      await client.query(
-        `
-      INSERT INTO login_sessions (user_id, token_hash, ip_address, user_agent, expires_at)
-      VALUES ($1, $2, $3, $4, $5)
-      `,
-        [bestUser.id, tokenHash, req.ip, req.get("User-Agent"), expiresAt]
-      );
-      await this.logLoginAttempt(
-        bestUser.email,
-        req.ip,
-        req.get("User-Agent"),
-        true,
-        `Login facial exitoso - ${bestUserMatchCount} coincidencias, Similitud promedio: ${bestUserAvgSimilarity.toFixed(3)}`
-      );
-      res.json({
-        success: true,
-        message: "Login facial exitoso",
-        userToken: token,
-        user: bestUser,
-        authentication: {
-          method: "facial",
-          similarity: Number.parseFloat(bestUserAvgSimilarity.toFixed(3)),
-          maxSimilarity: Number.parseFloat(bestUserMaxSimilarity.toFixed(3)),
-          matches: bestUserMatchCount,
-          threshold: SIMILARITY_THRESHOLD,
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      console.error("[Backend] Error crítico en login facial:", error);
-      await this.logLoginAttempt(
-        "facial-login",
-        req.ip,
-        req.get("User-Agent"),
-        false,
-        "Error interno del servidor"
-      );
-      res.status(500).json({
-        success: false,
-        error: "Error interno del servidor durante la autenticación facial",
-      });
-    } finally {
-      client.release();
     }
   }
 
@@ -1000,30 +444,6 @@ class FacialAuthModel {
       });
     } catch (error) {
       console.error("Error obteniendo estadísticas:", error);
-      res.status(500).json({
-        success: false,
-        error: "Error interno del servidor",
-      });
-    }
-  }
-
-  // Método para eliminar datos biométricos
-  static async deleteBiometricData(req, res) {
-    try {
-      const userId = req.user.userId;
-
-      const result = await pool.query(
-        "DELETE FROM face_embeddings WHERE user_id = $1",
-        [userId]
-      );
-
-      res.json({
-        success: true,
-        message: "Datos biométricos eliminados exitosamente",
-        deletedCount: result.rowCount,
-      });
-    } catch (error) {
-      console.error("Error eliminando datos biométricos:", error);
       res.status(500).json({
         success: false,
         error: "Error interno del servidor",

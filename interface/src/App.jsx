@@ -62,6 +62,21 @@ export default function App() {
     }
   }, []);
 
+  // Escuchar eventos de logout forzado desde el ApiService
+  useEffect(() => {
+    const handleForceLogout = (event) => {
+      console.log("[App] Logout forzado:", event.detail.reason);
+      handleLogout();
+      setErrorMessage(`Sesión cerrada: ${event.detail.reason}`);
+    };
+
+    window.addEventListener("forceLogout", handleForceLogout);
+
+    return () => {
+      window.removeEventListener("forceLogout", handleForceLogout);
+    };
+  }, []);
+
   // Verificar estado del sistema
   useEffect(() => {
     checkSystemStatus();
@@ -189,13 +204,23 @@ export default function App() {
   };
 
   // Limpiar sesión de localStorage al hacer logout
-  const handleLogout = () => {
-    setUserToken(null);
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    setMode("home");
-    setSuccessMessage("Sesión cerrada exitosamente");
-    localStorage.removeItem("userToken");
+  const handleLogout = async () => {
+    try {
+      // Intentar cerrar sesión en el servidor si hay token
+      if (userToken) {
+        await ApiService.logout(userToken);
+      }
+    } catch (error) {
+      console.error("Error cerrando sesión en servidor:", error);
+    } finally {
+      // Limpiar estado local independientemente del resultado del servidor
+      setUserToken(null);
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      setMode("home");
+      setSuccessMessage("Sesión cerrada exitosamente");
+      localStorage.removeItem("userToken");
+    }
   };
 
   const handleRegistrationSubmit = async () => {

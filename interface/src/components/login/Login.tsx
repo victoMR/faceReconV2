@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
-import { FaSignInAlt, FaLock, FaUser } from "react-icons/fa";
+import { FaSignInAlt, FaUser, FaLock } from "react-icons/fa";
+import { useState } from "react";
+import ApiService from "../../services/ApiService";
 
 interface LoginPageProps {
-  onModeChange: (mode: string) => void;
+  onLoginComplete: (userToken: string, userData: any) => void;
 }
 
 const pageVariants = {
@@ -19,7 +21,47 @@ const pageVariants = {
   },
 };
 
-export default function LoginPage({ onModeChange }: LoginPageProps) {
+export default function LoginPage({ onLoginComplete }: LoginPageProps) {
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    if (error) setError("");
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await ApiService.loginCredentials(
+        formData.email,
+        formData.password
+      );
+
+      if (response.success && response.userToken) {
+        onLoginComplete(response.userToken, { email: formData.email });
+      } else {
+        setError(response.error || "Error en el inicio de sesión");
+      }
+    } catch (error) {
+      console.error("Error en login:", error);
+      setError("Error de conexión. Intente nuevamente.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <motion.div
       variants={pageVariants}
@@ -40,29 +82,73 @@ export default function LoginPage({ onModeChange }: LoginPageProps) {
             Iniciar Sesión
           </h2>
           <p className="text-gray-600 mt-2">
-            Seleccione su método de autenticación preferido
+            Ingrese sus credenciales para acceder
           </p>
         </div>
 
-        <div className="space-y-4">
-          {/* Botones principales de selección de método de login */}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Correo Electrónico
+            </label>
+            <div className="relative">
+              <FaUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={handleInputChange}
+                className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                placeholder="su@email.com"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Contraseña
+            </label>
+            <div className="relative">
+              <FaLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={formData.password}
+                onChange={handleInputChange}
+                className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                placeholder="••••••••"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
           <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => onModeChange("login-password")}
-            className="bg-white/80 border border-blue-200 text-blue-900 font-semibold rounded-2xl shadow-md hover:bg-blue-50 transition-all duration-200 px-8 py-5 flex items-center justify-center space-x-4 w-full mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100"
+            whileHover={{ scale: isLoading ? 1 : 1.02 }}
+            whileTap={{ scale: isLoading ? 1 : 0.98 }}
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="p-3 rounded-xl bg-blue-100">
-              <FaUser className="w-6 h-6 text-blue-700" />
-            </div>
-            <div className="text-left">
-              <h3 className="font-semibold text-lg">Login Tradicional</h3>
-              <p className="text-gray-500 text-sm">
-                Ingrese con usuario y contraseña
-              </p>
-            </div>
+            {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
           </motion.button>
-        </div>
+        </form>
       </div>
     </motion.div>
   );

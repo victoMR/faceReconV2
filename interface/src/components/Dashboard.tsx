@@ -35,7 +35,6 @@ interface User {
   phone: string;
   idNumber: string;
   createdAt: string;
-  biometricEnabled: boolean;
   activeSessions: number;
 }
 
@@ -49,18 +48,10 @@ interface LoginAttempt {
   created_at: string;
 }
 
-interface BiometricData {
-  capture_type: string;
-  quality_score: number;
-  created_at: string;
-}
-
 interface DashboardStats {
   totalLogins: number;
   activeSessions: number;
-  biometricEnabled: boolean;
   recentActivity: LoginAttempt[];
-  biometricData: BiometricData[];
 }
 
 interface DashboardProps {
@@ -140,25 +131,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
     } catch (error) {
       console.error('Error en logout:', error);
       onLogout(); // Logout local si falla el servidor
-    }
-  };
-
-  const clearBiometricData = async () => {
-    if (!window.confirm('¿Está seguro de eliminar todos sus datos biométricos? Esta acción no se puede deshacer.')) {
-      return;
-    }
-
-    try {
-      const response = await ApiService.clearBiometricData(userToken);
-      if (response.success) {
-        addNotification('success', 'Datos biométricos eliminados exitosamente');
-        loadUserData(); // Recargar datos
-      } else {
-        addNotification('error', response.error || 'Error eliminando datos biométricos');
-      }
-    } catch (error) {
-      console.error('Error eliminando datos biométricos:', error);
-      addNotification('error', 'Error conectando con el servidor');
     }
   };
 
@@ -243,15 +215,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
           className="bg-white rounded-xl p-6 shadow-lg border border-gray-200"
         >
           <div className="flex items-center space-x-4">
-            <div className={`p-3 rounded-xl text-white`} style={{
-              backgroundColor: stats?.biometricEnabled ? '#cbe552' : '#dc2626'
-            }}>
+            <div className="p-3 rounded-xl text-white" style={{backgroundColor: '#3e5866'}}>
               <FaFingerprint className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-gray-600 text-sm">Biométrico</p>
+              <p className="text-gray-600 text-sm">Estado Cuenta</p>
               <p className="text-2xl font-bold text-gray-800">
-                {stats?.biometricEnabled ? 'Activo' : 'Inactivo'}
+                Activa
               </p>
             </div>
           </div>
@@ -270,7 +240,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
             <div>
               <p className="text-gray-600 text-sm">Nivel Seguridad</p>
               <p className="text-2xl font-bold text-gray-800">
-                {stats?.biometricEnabled ? 'Alto' : 'Medio'}
+                Normal
               </p>
             </div>
           </div>
@@ -355,10 +325,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
             <FaShieldAlt className="w-6 h-6 text-gray-600" />
             <h3 className="text-xl font-semibold text-gray-800">Estado de Seguridad</h3>
           </div>
-          <div className={`px-4 py-2 rounded-lg text-sm font-medium ${
-            stats?.biometricEnabled ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-          }`}>
-            {stats?.biometricEnabled ? 'Seguridad Alta' : 'Seguridad Media'}
+          <div className="px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-800">
+            Seguridad Normal
           </div>
         </div>
 
@@ -366,16 +334,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
               <div className="flex items-center space-x-3">
-                <FaFingerprint className="w-5 h-5 text-gray-600" />
-                <span className="font-medium">Autenticación Biométrica</span>
+                <FaLock className="w-5 h-5 text-gray-600" />
+                <span className="font-medium">Autenticación por Contraseña</span>
               </div>
-              <div className={`flex items-center space-x-2 ${
-                stats?.biometricEnabled ? 'text-green-600' : 'text-red-600'
-              }`}>
-                {stats?.biometricEnabled ? <FaCheckCircle /> : <FaTimes />}
-                <span className="text-sm font-medium">
-                  {stats?.biometricEnabled ? 'Activa' : 'Inactiva'}
-                </span>
+              <div className="flex items-center space-x-2 text-green-600">
+                <FaCheckCircle />
+                <span className="text-sm font-medium">Activa</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <FaLock className="w-5 h-5 text-gray-600" />
+                <span className="font-medium">Cuenta de Usuario</span>
+              </div>
+              <div className="flex items-center space-x-2 text-green-600">
+                <FaCheckCircle />
+                <span className="text-sm font-medium">Activa</span>
               </div>
             </div>
 
@@ -403,33 +378,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
           </div>
 
           <div className="space-y-4">
-            <h4 className="font-semibold text-gray-800">Datos Biométricos</h4>
-            {stats?.biometricData && stats.biometricData.length > 0 ? (
-              <div className="space-y-3">
-                {stats.biometricData.map((data, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <FaCamera className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium capitalize">{data.capture_type.replace('_', ' ')}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-16 bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="h-2 rounded-full"
-                          style={{
-                            width: `${data.quality_score * 100}%`,
-                            backgroundColor: data.quality_score > 0.8 ? '#10b981' : data.quality_score > 0.6 ? '#f59e0b' : '#ef4444'
-                          }}
-                        />
-                      </div>
-                      <span className="text-xs text-gray-500">{Math.round(data.quality_score * 100)}%</span>
-                    </div>
-                  </div>
-                ))}
+            <h4 className="font-semibold text-gray-800">Información de Cuenta</h4>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <FaUser className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium">Cuenta Verificada</span>
+                </div>
+                <div className="flex items-center space-x-2 text-green-600">
+                  <FaCheckCircle />
+                  <span className="text-xs">Activa</span>
+                </div>
               </div>
-            ) : (
-              <p className="text-gray-500 text-sm">No hay datos biométricos registrados</p>
-            )}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <FaLock className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium">Contraseña Segura</span>
+                </div>
+                <div className="flex items-center space-x-2 text-green-600">
+                  <FaCheckCircle />
+                  <span className="text-xs">Configurada</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </motion.div>
@@ -450,23 +421,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, userToken }) => {
             onClick={() => addNotification('warning', 'Funcionalidad en desarrollo')}
             className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            <FaSync className="w-5 h-5 text-blue-600" />
+            <FaUser className="w-5 h-5 text-blue-600" />
             <div className="text-left">
-              <p className="font-medium text-gray-800">Regenerar Embeddings</p>
-              <p className="text-sm text-gray-600">Actualizar datos biométricos</p>
+              <p className="font-medium text-gray-800">Actualizar Perfil</p>
+              <p className="text-sm text-gray-600">Cambiar información personal</p>
             </div>
           </motion.button>
 
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={clearBiometricData}
-            className="flex items-center space-x-3 p-4 border border-red-200 rounded-lg hover:bg-red-50 transition-colors text-red-600"
+            onClick={() => addNotification('warning', 'Funcionalidad en desarrollo')}
+            className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            <FaTrash className="w-5 h-5" />
+            <FaLock className="w-5 h-5 text-green-600" />
             <div className="text-left">
-              <p className="font-medium">Eliminar Datos Biométricos</p>
-              <p className="text-sm">Borrar todos los embeddings faciales</p>
+              <p className="font-medium text-gray-800">Cambiar Contraseña</p>
+              <p className="text-sm text-gray-600">Actualizar credenciales de acceso</p>
             </div>
           </motion.button>
 

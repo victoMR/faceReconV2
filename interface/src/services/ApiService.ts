@@ -17,12 +17,7 @@ api.interceptors.request.use(
   (config) => {
     console.log(`[ApiService] ${config.method?.toUpperCase()} ${config.url}`);
     if (config.data) {
-      console.log("[ApiService] Request data:", {
-        ...config.data,
-        faceEmbeddings: config.data.faceEmbeddings
-          ? `[${config.data.faceEmbeddings.length} embeddings]`
-          : undefined,
-      });
+      console.log("[ApiService] Request data:", config.data);
     }
     return config;
   },
@@ -76,6 +71,15 @@ interface LoginResponse {
 interface RegisterResponse {
   success: boolean;
   userId?: number;
+  userToken?: string;
+  user?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    createdAt: string;
+  };
   message?: string;
   error?: string;
 }
@@ -90,7 +94,6 @@ interface UserProfileResponse {
     phone: string;
     idNumber: string;
     createdAt: string;
-    biometricEnabled: boolean;
     activeSessions: number;
   };
   error?: string;
@@ -101,7 +104,6 @@ interface DashboardStatsResponse {
   stats?: {
     totalLogins: number;
     activeSessions: number;
-    biometricEnabled: boolean;
     recentActivity: Array<{
       id: number;
       email: string;
@@ -109,11 +111,6 @@ interface DashboardStatsResponse {
       success: boolean;
       failure_reason: string | null;
       user_agent: string;
-      created_at: string;
-    }>;
-    biometricData: Array<{
-      capture_type: string;
-      quality_score: number;
       created_at: string;
     }>;
   };
@@ -150,7 +147,9 @@ class ApiService {
         );
         return {
           success: true,
-          userId: response.data.userId,
+          userId: response.data.user?.id,
+          userToken: response.data.userToken,
+          user: response.data.user,
           message: response.data.message || "Usuario registrado exitosamente",
         };
       } else {
@@ -198,7 +197,7 @@ class ApiService {
         console.log("[ApiService] Login exitoso para:", email);
         return {
           success: true,
-          userToken: response.data.token,
+          userToken: response.data.userToken,
           message: "Login exitoso",
         };
       } else {

@@ -5,10 +5,8 @@ import { AnimatePresence } from "framer-motion";
 import Header from "./components/Header";
 import HomePage from "./components/home/Home";
 import LoginPage from "./components/login/Login";
-import FacialLogin from "./components/login/FacialLogin";
 import PasswordLogin from "./components/login/PasswordLogin";
 import RegistrationForm from "./components/register/Register";
-import FacialEnrollment from "./components/register/FacialEnrollment";
 import Dashboard from "./components/Dashboard";
 import SystemStatusAlert from "./components/SystemStatusAlert";
 import NotificationSystem from "./components/notifications/NotificationSystem";
@@ -143,26 +141,6 @@ export default function App() {
     }
   };
 
-  const handleEnrollmentComplete = async (success, userToken) => {
-    if (success && userToken) {
-      setUserToken(userToken);
-      setIsAuthenticated(true);
-      setMode("dashboard");
-      setSuccessMessage("Registro biométrico completado exitosamente");
-      setRegistrationData({
-        firstName: "",
-        lastName: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        phone: "",
-        idNumber: "",
-      });
-    } else {
-      setErrorMessage("Error completando el registro biométrico");
-    }
-  };
-
   // Guardar token en localStorage al hacer login
   const handleLoginComplete = (success, token) => {
     if (success && token) {
@@ -228,23 +206,17 @@ export default function App() {
       const response = await ApiService.registerUser(registrationData);
 
       if (response.success) {
-        setSuccessMessage(
-          "Usuario registrado exitosamente. Configurando registro biométrico..."
-        );
+        setSuccessMessage("Usuario registrado exitosamente!");
 
-        const loginResponse = await ApiService.loginCredentials(
-          registrationData.email,
-          registrationData.password
-        );
-
-        if (loginResponse.success) {
-          setUserToken(loginResponse.userToken);
-          setMode("register-facial");
+        // El registro ya devuelve un token, no necesitamos hacer login adicional
+        if (response.userToken && response.user) {
+          setUserToken(response.userToken);
+          setCurrentUser(response.user);
+          setIsAuthenticated(true);
+          setMode("dashboard");
           return true;
         } else {
-          setErrorMessage(
-            "Usuario registrado pero no se pudo iniciar sesión automáticamente"
-          );
+          setErrorMessage("Usuario registrado pero no se recibió token de acceso");
           return false;
         }
       } else {
@@ -293,13 +265,6 @@ export default function App() {
 
           {mode === "login" && <LoginPage key="login" onModeChange={setMode} />}
 
-          {mode === "login-facial" && (
-            <FacialLogin
-              key="login-facial"
-              onLoginComplete={handleLoginComplete}
-            />
-          )}
-
           {mode === "login-password" && (
             <PasswordLogin
               key="login-password"
@@ -315,15 +280,6 @@ export default function App() {
               registrationData={registrationData}
               onInputChange={setRegistrationData}
               onSubmit={handleRegistrationSubmit}
-            />
-          )}
-
-          {mode === "register-facial" && (
-            <FacialEnrollment
-              key="register-facial"
-              userData={registrationData}
-              userToken={userToken}
-              onEnrollmentComplete={handleEnrollmentComplete}
             />
           )}
 
